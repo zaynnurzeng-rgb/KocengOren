@@ -16,8 +16,6 @@ import com.koceng.oren.character.PetCharacter
 import com.koceng.oren.input.PetTouchController
 import net.mgsx.gltf.scene3d.lights.DirectionalLightEx
 import net.mgsx.gltf.scene3d.scene.SceneManager
-import net.mgsx.gltf.scene3d.shaders.PBRShaderConfig
-import net.mgsx.gltf.scene3d.shaders.PBRShaderProvider
 
 class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), VoiceMimicCallback {
 
@@ -39,13 +37,9 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
             update()
         }
 
-        // 2. Inisialisasi SceneManager PBR dengan konfigurasi numBones custom
-        // Model cartoon_cat.glb memiliki 58 bones — lebih dari default 24
-        // Wajib set numBones >= jumlah bones model sebelum SceneManager dibuat
-        val pbrConfig = PBRShaderConfig().apply {
-            numBones = 64  // Set lebih besar dari 58 bones model
-        }
-        sceneManager = SceneManager(PBRShaderProvider(pbrConfig))
+        // 2. Inisialisasi SceneManager PBR dengan maxBones = 64
+        // Model cartoon_cat.glb memiliki 58 bones (melebihi default 12/24)
+        sceneManager = SceneManager(64)
         sceneManager.camera = camera
 
         // 3. Konfigurasi Pencahayaan PBR Dasar
