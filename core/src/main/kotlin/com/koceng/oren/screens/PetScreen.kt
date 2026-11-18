@@ -7,7 +7,6 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.PerspectiveCamera
-import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Timer
 import com.koceng.oren.audio.VoiceMimicBridge
 import com.koceng.oren.audio.VoiceMimicCallback
@@ -17,7 +16,6 @@ import com.koceng.oren.character.PetCharacter
 import com.koceng.oren.input.PetTouchController
 import net.mgsx.gltf.scene3d.lights.DirectionalLightEx
 import net.mgsx.gltf.scene3d.scene.SceneManager
-import net.mgsx.gltf.scene3d.utils.IBLBuilder
 
 class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), VoiceMimicCallback {
 
@@ -43,24 +41,14 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
         sceneManager = SceneManager()
         sceneManager.camera = camera
 
-        // 3. Konfigurasi Pencahayaan PBR & IBL Dasar
+        // 3. Konfigurasi Pencahayaan PBR Dasar
         val sunLight = DirectionalLightEx().apply {
             direction.set(1f, -2.5f, 1.5f).nor()
             color.set(Color.WHITE)
             intensity = 2.5f
         }
         sceneManager.environment.add(sunLight)
-
-        // Bangun pencahayaan ambient / IBL sintetis secara procedural
-        val iblBuilder = IBLBuilder.createOutdoor(sunLight)
-        val environmentCubemap = iblBuilder.buildEnvMap(512)
-        val diffuseCubemap = iblBuilder.buildIrradianceMap(128)
-        val specularCubemap = iblBuilder.buildRadianceMap(10)
-        iblBuilder.dispose()
-
-        sceneManager.setAmbientLight(0.35f)
-        sceneManager.environment.set(net.mgsx.gltf.scene3d.attributes.PBRCubemapAttribute.createSpecularEnv(specularCubemap))
-        sceneManager.environment.set(net.mgsx.gltf.scene3d.attributes.PBRCubemapAttribute.createDiffuseEnv(diffuseCubemap))
+        sceneManager.setAmbientLight(0.6f)
 
         // 4. Memuat Model Karakter 3D (.glb)
         pet = PetCharacter("models/cartoon_cat.glb")

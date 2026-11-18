@@ -1,12 +1,4 @@
 buildscript {
-    ext {
-        appName = "Koceng Oren"
-        gdxVersion = '1.12.1'
-        gltfVersion = '2.2.1'
-        kotlinVersion = '1.9.22'
-        androidPluginVersion = '8.2.2'
-    }
-
     repositories {
         google()
         mavenCentral()
@@ -14,12 +6,19 @@ buildscript {
     }
 
     dependencies {
-        classpath "com.android.tools.build:gradle:$androidPluginVersion"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
+        classpath "com.android.tools.build:gradle:8.2.2"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22"
     }
 }
 
 allprojects {
+    ext {
+        appName = "Koceng Oren"
+        gdxVersion = '1.12.1'
+        gltfVersion = '2.2.1'
+        kotlinVersion = '1.9.22'
+    }
+
     repositories {
         google()
         mavenCentral()
