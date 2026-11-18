@@ -143,14 +143,14 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
 
         hungerLabel = Label("Lapar: ${hunger.toInt()}%", uiSkin)
         hungerBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "hunger-bar").apply {
-            value = hunger
-            animateDuration = 0.2f
+            setValue(hunger)
+            setAnimateDuration(0.2f)
         }
 
         energyLabel = Label("Energi: ${energy.toInt()}%", uiSkin)
         energyBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "energy-bar").apply {
-            value = energy
-            animateDuration = 0.2f
+            setValue(energy)
+            setAnimateDuration(0.2f)
         }
 
         topTable.add(hungerLabel).left().padRight(12f)
@@ -258,8 +258,8 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
         }
 
         // Sinkronisasi nilai ke elemen UI
-        hungerBar.value = hunger
-        energyBar.value = energy
+        hungerBar.setValue(hunger)
+        energyBar.setValue(energy)
         hungerLabel.setText("Lapar: ${hunger.toInt()}%")
         energyLabel.setText("Energi: ${energy.toInt()}%")
     }
@@ -370,12 +370,12 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
         val hungerFill = createSolidDrawable(Color(0.95f, 0.55f, 0.15f, 1.0f)) // Warna Oranye
         val energyFill = createSolidDrawable(Color(0.20f, 0.75f, 0.35f, 1.0f)) // Warna Hijau
 
-        val hungerStyle = ProgressBar.ProgressBarStyle(bgDrawable, hungerFill).apply {
+        val hungerStyle = ProgressBar.ProgressBarStyle(bgDrawable, null).apply {
             knobBefore = hungerFill
         }
         skin.add("hunger-bar", hungerStyle)
 
-        val energyStyle = ProgressBar.ProgressBarStyle(bgDrawable, energyFill).apply {
+        val energyStyle = ProgressBar.ProgressBarStyle(bgDrawable, null).apply {
             knobBefore = energyFill
         }
         skin.add("energy-bar", energyStyle)
