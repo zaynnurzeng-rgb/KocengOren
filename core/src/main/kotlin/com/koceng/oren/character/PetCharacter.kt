@@ -14,7 +14,9 @@ enum class PetState {
     LISTENING,
     TALKING,
     DIZZY,    // Reaksi kepala dipukul/disentuh (Pusing)
-    LAUGHING  // Reaksi perut dielus/disentuh (Tertawa)
+    LAUGHING, // Reaksi perut dielus/disentuh (Tertawa)
+    EATING,   // Reaksi makan
+    SLEEPING  // Mode tidur
 }
 
 enum class HitZone {
@@ -46,11 +48,15 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     private val animTalkingName: String
     private val animDizzyName: String
     private val animLaughName: String
+    private val animEatingName: String
+    private val animSleepingName: String
 
-    // Listener untuk transisi kembali ke IDLE saat animasi one-shot (Pusing / Tertawa) selesai
+    // Listener untuk transisi kembali ke IDLE saat animasi one-shot selesai
     private val reactionListener = object : AnimationController.AnimationListener {
         override fun onEnd(animation: AnimationController.AnimationDesc?) {
-            playIdle()
+            if (currentState != PetState.SLEEPING) {
+                playIdle()
+            }
         }
 
         override fun onLoop(animation: AnimationController.AnimationDesc?) {}
@@ -88,12 +94,14 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
         val animMap = scene.modelInstance.animations.map { it.id }.toSet()
         Gdx.app.log("PetCharacter", "Daftar animasi di GLB: $animMap")
 
-        // Memetakan animasi ke aset model (mendukung nama generik maupun nama pada cartoon_cat.glb)
+        // Memetakan animasi ke aset model
         animIdleName = findAnimation(animMap, listOf("Idle", "Idle_Harmonic", "Idle_Dreamer", "Arm_Idle"))
         animListeningName = findAnimation(animMap, listOf("Listening", "Idle_Dreamer", "Pistol_Idle", "Idle_Harmonic"))
         animTalkingName = findAnimation(animMap, listOf("Talking", "Arm_Attack_Light", "Arm_Attack_Medium", "Idle_Invasive"))
         animDizzyName = findAnimation(animMap, listOf("Dizzy", "Hit", "Pusing", "Arm_Hit", "Pistol_Hit", "Sword_Hit"))
         animLaughName = findAnimation(animMap, listOf("Laugh", "Laughing", "Tertawa", "Arm_Attack_Hight", "Sword_Attack_Light"))
+        animEatingName = findAnimation(animMap, listOf("Eating", "Eat", "Arm_Attack_Light", "Arm_Attack_End", "Arm_Attack_Medium"))
+        animSleepingName = findAnimation(animMap, listOf("Sleeping", "Sleep", "Idle_Dreamer", "Arm_Death", "Idle_Invasive"))
 
         // Mainkan animasi awal (Idle)
         playIdle()
@@ -125,7 +133,7 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     }
 
     fun playListening() {
-        if (currentState == PetState.DIZZY || currentState == PetState.LAUGHING) return
+        if (currentState == PetState.DIZZY || currentState == PetState.LAUGHING || currentState == PetState.SLEEPING) return
         currentState = PetState.LISTENING
         if (animListeningName.isNotEmpty()) {
             scene.animationController.animate(animListeningName, -1, 1f, null, 0.2f)
@@ -133,7 +141,7 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     }
 
     fun playTalking() {
-        if (currentState == PetState.DIZZY || currentState == PetState.LAUGHING) return
+        if (currentState == PetState.DIZZY || currentState == PetState.LAUGHING || currentState == PetState.SLEEPING) return
         currentState = PetState.TALKING
         if (animTalkingName.isNotEmpty()) {
             scene.animationController.animate(animTalkingName, -1, 1.2f, null, 0.15f)
@@ -141,6 +149,7 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     }
 
     fun playDizzy() {
+        if (currentState == PetState.SLEEPING) wakeUp()
         currentState = PetState.DIZZY
         if (animDizzyName.isNotEmpty()) {
             scene.animationController.animate(animDizzyName, 1, 1.3f, reactionListener, 0.1f)
@@ -148,9 +157,31 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     }
 
     fun playLaughing() {
+        if (currentState == PetState.SLEEPING) wakeUp()
         currentState = PetState.LAUGHING
         if (animLaughName.isNotEmpty()) {
             scene.animationController.animate(animLaughName, 1, 1.5f, reactionListener, 0.1f)
+        }
+    }
+
+    fun playEating() {
+        if (currentState == PetState.SLEEPING) wakeUp()
+        currentState = PetState.EATING
+        if (animEatingName.isNotEmpty()) {
+            scene.animationController.animate(animEatingName, 1, 1.2f, reactionListener, 0.15f)
+        }
+    }
+
+    fun playSleeping() {
+        currentState = PetState.SLEEPING
+        if (animSleepingName.isNotEmpty()) {
+            scene.animationController.animate(animSleepingName, -1, 0.7f, null, 0.25f)
+        }
+    }
+
+    fun wakeUp() {
+        if (currentState == PetState.SLEEPING) {
+            playIdle()
         }
     }
 
