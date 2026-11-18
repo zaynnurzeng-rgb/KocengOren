@@ -1,11 +1,9 @@
 package com.koceng.oren.character
 
 import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.graphics.g3d.model.Animation
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.math.collision.BoundingBox
-import com.badlogic.gdx.math.collision.Ray
 import com.badlogic.gdx.utils.Disposable
 import net.mgsx.gltf.loaders.glb.GLBLoader
 import net.mgsx.gltf.scene3d.scene.Scene
@@ -49,6 +47,15 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     private val animDizzyName: String
     private val animLaughName: String
 
+    // Listener untuk transisi kembali ke IDLE saat animasi one-shot (Pusing / Tertawa) selesai
+    private val reactionListener = object : AnimationController.AnimationListener {
+        override fun onEnd(animation: AnimationController.AnimationDesc?) {
+            playIdle()
+        }
+
+        override fun onLoop(animation: AnimationController.AnimationDesc?) {}
+    }
+
     init {
         // Skala dan penyesuaian posisi default model
         scene.modelInstance.transform.setToTranslationAndScaling(0f, 0f, 0f, 1f, 1f, 1f)
@@ -88,17 +95,6 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
         animDizzyName = findAnimation(animMap, listOf("Dizzy", "Hit", "Pusing", "Arm_Hit", "Pistol_Hit", "Sword_Hit"))
         animLaughName = findAnimation(animMap, listOf("Laugh", "Laughing", "Tertawa", "Arm_Attack_Hight", "Sword_Attack_Light"))
 
-        // Pasang AnimationListener untuk menangani transisi one-shot kembali ke IDLE
-        scene.animationController.addListener(object : AnimationController.AnimationListener {
-            override fun onEnd(animation: AnimationController.AnimationDesc?) {
-                if (currentState == PetState.DIZZY || currentState == PetState.LAUGHING) {
-                    playIdle()
-                }
-            }
-
-            override fun onLoop(animation: AnimationController.AnimationDesc?) {}
-        })
-
         // Mainkan animasi awal (Idle)
         playIdle()
     }
@@ -117,7 +113,6 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     }
 
     fun update(delta: Float) {
-        // Update animasi GLTF
         scene.animationController.update(delta)
         updateWorldBounds()
     }
@@ -148,15 +143,14 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     fun playDizzy() {
         currentState = PetState.DIZZY
         if (animDizzyName.isNotEmpty()) {
-            // Mainkan 1x (loop count = 1) dengan transisi cepat
-            scene.animationController.animate(animDizzyName, 1, 1.3f, null, 0.1f)
+            scene.animationController.animate(animDizzyName, 1, 1.3f, reactionListener, 0.1f)
         }
     }
 
     fun playLaughing() {
         currentState = PetState.LAUGHING
         if (animLaughName.isNotEmpty()) {
-            scene.animationController.animate(animLaughName, 1, 1.5f, null, 0.1f)
+            scene.animationController.animate(animLaughName, 1, 1.5f, reactionListener, 0.1f)
         }
     }
 
