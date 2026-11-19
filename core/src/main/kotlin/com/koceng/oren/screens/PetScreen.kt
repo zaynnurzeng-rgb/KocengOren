@@ -117,8 +117,7 @@ class PetScreen(
                             "Aduh! Tangan lu nggak bisa diem ya, pusing nih kepala gue!",
                             "Heh! Kepala gue bukan tombol, jangan asal pencet!"
                             ).random()
-                        petHud.showReply(reaction)
-                        aiChatBridge.speakText(reaction)
+                        showAndSpeak(reaction)
                     }
                 }
                 HitZone.BELLY -> {
@@ -131,8 +130,7 @@ class PetScreen(
                             "Heh! Jangan colek perut gue, emang lu kira gue boneka?",
                             "Idih, tangan lu gatel amat megang-pegang perut gue!"
                             ).random()
-                        petHud.showReply(reaction)
-                        aiChatBridge.speakText(reaction)
+                        showAndSpeak(reaction)
                     }
                 }
                 HitZone.NONE -> {}
@@ -161,6 +159,7 @@ class PetScreen(
 
         aiChatBridge.setChatMode(ChatMode.CHAT)
         setupAiChatCallbacks()
+        aiChatBridge.speakText("Apaan sih manggil-manggil? Mau ngobrol atau nyuruh gue ngerjain PR lu lagi?")
     }
 
     private fun getHeadScreenPos(): Vector3 {
@@ -172,7 +171,11 @@ class PetScreen(
         tempVec3.set(0f, 0.85f, 0f)
         return camera.project(tempVec3)
     }
-
+    private fun showAndSpeak(text: String) {
+        petHud.showReply(text)
+        aiChatBridge.speakText(text)
+    }
+    
     private fun setupHudCallbacks() {
         petHud.onTalkClicked = {
             sfx.playButton()
@@ -191,9 +194,9 @@ class PetScreen(
             aiChatBridge.setChatMode(if (isHomeworkMode) ChatMode.HOMEWORK else ChatMode.CHAT)
             petHud.setHomeworkMode(isHomeworkMode)
             if (isHomeworkMode) {
-                petHud.showReply("Mode PR Sekolah aktif! Ya udah, sebutin atau pencet Ketik buat kasih soal PR lu sekarang.")
+               showAndSpeak("Mode PR Sekolah aktif! Ya udah, sebutin atau pencet Ketik buat kasih soal PR lu sekarang.")
             } else {
-                petHud.showReply("Mode obrolan santai balik lagi. Mau ngomong apaan lu?")
+               showAndSpeak("Mode obrolan santai balik lagi. Mau ngomong apaan lu?")
             }
         }
 
@@ -208,6 +211,7 @@ class PetScreen(
             aiChatBridge.resetChatHistory()
             petHud.setStatusState(HudAiState.IDLE)
             petHud.clearChat()
+            aiChatBridge.speakText("Ingatan obrolan udah gue hapus! Mau bahas apa lagi sekarang?")
             pet.playIdle()
         }
     }
