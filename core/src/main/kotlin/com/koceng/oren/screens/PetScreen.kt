@@ -13,6 +13,7 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.koceng.oren.ai.AiChatBridge
 import com.koceng.oren.ai.ChatMode
+import com.koceng.oren.ai.RoomTheme
 import com.koceng.oren.audio.ProceduralSfx
 import com.koceng.oren.audio.VoiceMimicBridge
 import com.koceng.oren.character.HitZone
@@ -55,6 +56,14 @@ class PetScreen(
 
     // Mode AI: Obrolan Santai vs PR Sekolah
     private var isHomeworkMode: Boolean = false
+    private var currentBackdropTint = Color(1f, 1f, 1f, 1f)
+    private var targetBackdropTint = Color(1f, 1f, 1f, 1f)
+    private var targetLightIntensity = 2.6f
+    private var currentLightIntensity = 2.6f
+    private var targetAmbient = 0.72f
+    private var currentAmbient = 0.72f
+    private var isAiThinking = false
+    private var thinkingParticleTimer = 0f
     override fun show() {
         // ==========================================
         // 1. Inisialisasi Kamera 3D
@@ -111,6 +120,7 @@ class PetScreen(
                     sfx.playPoke()
                     val headPos = getHeadScreenPos()
                     particleOverlay.spawnStars(headPos.x, headPos.y)
+                 particleOverlay.spawnAngerMarks(headPos.x, headPos.y + 20f)
                     if (!aiChatBridge.isBusy()) {
                         val reaction = listOf(
                             "Woy! Jangan colek-colek kepala gue, nggak sopan banget sih lu!",
@@ -160,8 +170,16 @@ class PetScreen(
         aiChatBridge.setChatMode(ChatMode.CHAT)
         setupAiChatCallbacks()
         aiChatBridge.speakText("Apaan sih manggil-manggil? Mau ngobrol atau nyuruh gue ngerjain PR lu lagi?")
+        applyRoomTheme(aiChatBridge.getSavedRoomTheme())
     }
 
+    private fun applyRoomTheme(theme: RoomTheme) {
+        when (theme) {
+            RoomTheme.DAY -> { targetBackdropTint.set(1f, 1f, 1f, 1f); targetLightIntensity = 2.6f; targetAmbient = 0.72f }
+            RoomTheme.NIGHT -> { targetBackdropTint.set(0.32f, 0.38f, 0.60f, 1f); targetLightIntensity = 0.9f; targetAmbient = 0.28f }
+            RoomTheme.STUDY -> { targetBackdropTint.set(1.0f, 0.90f, 0.72f, 1f); targetLightIntensity = 2.2f; targetAmbient = 0.62f }
+        }
+    }
     private fun getHeadScreenPos(): Vector3 {
         tempVec3.set(0f, 1.55f, 0f)
         return camera.project(tempVec3)
@@ -214,6 +232,10 @@ class PetScreen(
             aiChatBridge.speakText("Ingatan obrolan udah gue hapus! Mau bahas apa lagi sekarang?")
             pet.playIdle()
         }
+        petHud.onPhotoHomeworkClicked = { sfx.playButton(); isHomeworkMode = true; petHud.setHomeworkMode(true); aiChatBridge.setChatMode(ChatMode.HOMEWORK); aiChatBridge.openPhotoHomeworkPicker() }
+        petHud.onCopyClicked = { sfx.playButton(); aiChatBridge.copyLastReplyToClipboard() }
+    petHud.onHistoryClicked = { sfx.playButton(); aiChatBridge.openChatHistoryDialog() }
+    petHud.onSettingsClicked = { sfx.playButton(); aiChatBridge.openSettingsDialog() }
     }
 
     private fun setupAiChatCallbacks() {
@@ -228,6 +250,8 @@ class PetScreen(
         }
 
         aiChatBridge.onThinkingStateChanged = { isThinking ->
+            isAiThinking = isThinking
+            thinkingParticleTimer = 0f
             if (isThinking) {
                 petHud.setStatusState(HudAiState.THINKING)
                 pet.playListening()
@@ -240,6 +264,7 @@ class PetScreen(
 
         aiChatBridge.onReplyText = { reply ->
             petHud.showReply(reply)
+        if (isHomeworkMode) { val hp = getHeadScreenPos(); particleOverlay.spawnIdeaBulbs(hp.x, hp.y + 30f) }
         }
 
         aiChatBridge.onSpeakingStateChanged = { isSpeaking ->
@@ -257,6 +282,7 @@ class PetScreen(
             petHud.showReply(error)
             pet.playIdle()
         }
+        aiChatBridge.onRoomThemeChanged = { theme -> applyRoomTheme(theme) }
     }
 
     override fun render(delta: Float) {
@@ -272,7 +298,8 @@ class PetScreen(
 
         // 2. Update animasi karakter
         pet.update(delta)
-
+        currentBackdropTint.lerp(targetBackdropTint, delta * 3.5f); currentLightIntensity += (targetLightIntensity - currentLightIntensity) * minOf(1f, delta * 3.5f); currentAmbient += (targetAmbient - currentAmbient) * minOf(1f, delta * 3.5f); sunLight.intensity = currentLightIntensity; sceneManager.setAmbientLight(currentAmbient)
+                if (isAiThinking) { thinkingParticleTimer += delta; if (thinkingParticleTimer >= 0.9f) { val hp = getHeadScreenPos(); particleOverlay.spawnQuestionMarks(hp.x, hp.y + 30f); thinkingParticleTimer = 0f } }
         // 3. Clear buffer warna & kedalaman
         val w = Gdx.graphics.width.toFloat()
         val h = Gdx.graphics.height.toFloat()
@@ -282,7 +309,7 @@ class PetScreen(
 
         // 4. RENDER LAYER 0: Latar Belakang Ruangan Kartun 2D
         backdropBatch.projectionMatrix.setToOrtho2D(0f, 0f, w, h)
-        backdropBatch.color = Color.WHITE
+        backdropBatch.color = currentBackdropTint
         backdropBatch.begin()
         backdropBatch.draw(roomBackdropTexture, 0f, 0f, w, h)
         backdropBatch.end()
