@@ -29,6 +29,7 @@ class PetHud : Disposable {
     var onPlayClicked: (() -> Unit)? = null
     var onModeToggleClicked: (() -> Unit)? = null
     var onTalkClicked: (() -> Unit)? = null
+    var onResetChatClicked: (() -> Unit)? = null
 
     // UI Widgets - Status Bars & Labels
     private val hungerBar: ProgressBar
@@ -51,6 +52,7 @@ class PetHud : Disposable {
     private val playBtn: TextButton
     private val modeToggleBtn: TextButton
     private val talkBtn: TextButton
+    private val resetChatBtn: TextButton
 
     init {
         val rootTable = Table().apply {
@@ -178,8 +180,18 @@ class PetHud : Disposable {
             })
         }
 
-        modeRow.add(modeToggleBtn).width(210f).height(52f).padRight(12f)
-        modeRow.add(talkBtn).width(135f).height(52f)
+        resetChatBtn = TextButton("Reset", skin, "reset-btn").apply {
+            isVisible = false
+            addListener(object : ClickListener() {
+                override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                    onResetChatClicked?.invoke()
+                }
+            })
+        }
+
+        modeRow.add(modeToggleBtn).width(180f).height(50f).padRight(8f)
+        modeRow.add(talkBtn).width(110f).height(50f).padRight(8f)
+        modeRow.add(resetChatBtn).width(75f).height(50f)
 
         bottomTable.add(modeRow).padBottom(16f)
 
@@ -208,10 +220,12 @@ class PetHud : Disposable {
         if (isAiMode) {
             modeToggleBtn.setText("Mode: Ngobrol AI")
             talkBtn.isVisible = true
+            resetChatBtn.isVisible = true
             showSubtitle("Mode Ngobrol AI aktif! Tekan tombol Bicara untuk mengobrol.", 4f)
         } else {
             modeToggleBtn.setText("Mode: Tiru Suara")
             talkBtn.isVisible = false
+            resetChatBtn.isVisible = false
             showSubtitle("Mode Tiru Suara aktif. Ucapkan sesuatu ke mic!", 3f)
         }
     }
@@ -333,6 +347,14 @@ class PetHud : Disposable {
         val talkUp = createDrawable(Color(0.15f, 0.65f, 0.45f, 0.95f))
         val talkDown = createDrawable(Color(0.10f, 0.45f, 0.30f, 1.0f))
         skin.add("talk-btn", TextButton.TextButtonStyle(talkUp, talkDown, talkUp, font).apply {
+            fontColor = Color.WHITE
+            downFontColor = Color.LIGHT_GRAY
+        })
+
+        // Reset Chat Button (Merah Coral)
+        val resetUp = createDrawable(Color(0.70f, 0.25f, 0.25f, 0.92f))
+        val resetDown = createDrawable(Color(0.48f, 0.15f, 0.15f, 1.0f))
+        skin.add("reset-btn", TextButton.TextButtonStyle(resetUp, resetDown, resetUp, font).apply {
             fontColor = Color.WHITE
             downFontColor = Color.LIGHT_GRAY
         })

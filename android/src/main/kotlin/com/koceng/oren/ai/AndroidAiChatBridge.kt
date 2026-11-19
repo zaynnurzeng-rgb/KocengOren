@@ -19,6 +19,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -28,6 +29,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         private const val TAG = "AndroidAiChatBridge"
         private const val GEMINI_MODEL = "gemini-2.5-flash"
         private const val UTTERANCE_ID = "koceng_oren_tts_utterance"
+        private const val MAX_HISTORY_TURNS = 6 // Maksimal 6 giliran (3 pasang user-model)
     }
 
     override var onListeningStateChanged: ((Boolean) -> Unit)? = null
@@ -45,6 +47,9 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
     private val isRequestingApi = AtomicBoolean(false)
     private val isSpeaking = AtomicBoolean(false)
 
+    // Riwayat memori percakapan multi-turn (role to text)
+    private val chatHistory = Collections.synchronizedList(mutableListOf<Pair<String, String>>())
+
     // Status pet yang disisipkan ke context AI
     private var currentHunger: Float = 85f
     private var currentEnergy: Float = 90f
@@ -60,8 +65,8 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                         Log.w(TAG, "Bahasa Indonesia tidak didukung penuh TTS, mencoba fallback default locale.")
                         textToSpeech?.language = Locale.getDefault()
                     }
-                    textToSpeech?.setPitch(1.35f)      // Suara kucing agak melengking/lucu
-                    textToSpeech?.setSpeechRate(1.1f)   // Kecepatan sedikit lebih lincah
+                    textToSpeech?.setPitch(1.35f)      // Suara kucing melengking lucu
+                    textToSpeech?.setSpeechRate(1.1f)   // Lincah
                     isTtsReady = true
 
                     setupTtsListener()
@@ -101,6 +106,13 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         this.currentHunger = hunger
         this.currentEnergy = energy
         this.currentHappiness = happiness
+    }
+
+    override fun resetChatHistory() {
+        synchronized(chatHistory) {
+            chatHistory.clear()
+        }
+        Log.i(TAG, "Memori percakapan multi-turn Gemini telah dibersihkan.")
     }
 
     override fun isBusy(): Boolean {
@@ -203,7 +215,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
     }
 
     /**
-     * Mengirim pesan ke Gemini REST API (gemini-2.5-flash) di background thread
+     * Mengirim pesan beserta riwayat multi-turn ke Gemini REST API (gemini-2.5-flash) di background thread
      */
     private fun requestGeminiAi(userMessage: String) {
         val apiKey = BuildConfig.GEMINI_API_KEY
@@ -232,19 +244,31 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                 }
 
                 // Instruksi karakter Koceng Oren
-                val systemPrompt = "Kamu adalah 'Koceng Oren', seekor kucing oranye virtual pet yang tengil, lucu, respons singkat (maksimal 2 kalimat bahasa Indonesia santai). Status kamu saat ini: Lapar: ${currentHunger.toInt()}%, Energi: ${currentEnergy.toInt()}%, Bahagia: ${currentHappiness.toInt()}%."
+                val systemPrompt = "Kamu adalah 'Koceng Oren', seekor kucing oranye virtual pet yang tengil, lucu, ceplas-ceplos, respons singkat (maksimal 2 kalimat bahasa Indonesia santai). Ingat konteks obrolan sebelumnya. Status kamu saat ini: Lapar: ${currentHunger.toInt()}%, Energi: ${currentEnergy.toInt()}%, Bahagia: ${currentHappiness.toInt()}%."
 
-                // Susun payload JSON REST API Gemini
+                // Susun payload JSON REST API Gemini dengan riwayat percakapan multi-turn
                 val requestPayload = JSONObject().apply {
                     val contentsArray = JSONArray().apply {
-                        val contentObj = JSONObject().apply {
-                            put("role", "user")
-                            val partsArray = JSONArray().apply {
-                                put(JSONObject().put("text", userMessage))
+                        synchronized(chatHistory) {
+                            for (turn in chatHistory) {
+                                val item = JSONObject().apply {
+                                    put("role", turn.first) // "user" atau "model"
+                                    put("parts", JSONArray().apply {
+                                        put(JSONObject().put("text", turn.second))
+                                    })
+                                }
+                                put(item)
                             }
-                            put("parts", partsArray)
                         }
-                        put(contentObj)
+
+                        // Pesan user terkini
+                        val currentUserItem = JSONObject().apply {
+                            put("role", "user")
+                            put("parts", JSONArray().apply {
+                                put(JSONObject().put("text", userMessage))
+                            })
+                        }
+                        put(currentUserItem)
                     }
                     put("contents", contentsArray)
 
@@ -274,6 +298,16 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                     val reply = parts?.optJSONObject(0)?.optString("text")?.trim() ?: "Meong..."
 
                     Log.i(TAG, "Balasan Gemini: \"$reply\"")
+
+                    // Simpan ke memori multi-turn
+                    synchronized(chatHistory) {
+                        chatHistory.add("user" to userMessage)
+                        chatHistory.add("model" to reply)
+                        while (chatHistory.size > MAX_HISTORY_TURNS) {
+                            chatHistory.removeAt(0)
+                        }
+                    }
+
                     postToGdx {
                         onReplyText?.invoke(reply)
                     }

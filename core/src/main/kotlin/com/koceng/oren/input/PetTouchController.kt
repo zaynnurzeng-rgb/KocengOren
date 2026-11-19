@@ -46,12 +46,14 @@ class PetTouchController(
         when (hitZone) {
             HitZone.HEAD -> {
                 Gdx.app.log("Raycast", "Kepala disentuh! Memicu animasi Pusing.")
+                try { Gdx.input.vibrate(40) } catch (_: Exception) {}
                 pet.playDizzy()
                 onHitListener?.invoke(HitZone.HEAD)
                 return true
             }
             HitZone.BELLY -> {
                 Gdx.app.log("Raycast", "Perut disentuh! Memicu animasi Tertawa.")
+                try { Gdx.input.vibrate(40) } catch (_: Exception) {}
                 pet.playLaughing()
                 onHitListener?.invoke(HitZone.BELLY)
                 return true

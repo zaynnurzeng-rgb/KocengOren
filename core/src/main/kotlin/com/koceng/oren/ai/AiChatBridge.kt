@@ -45,4 +45,9 @@ interface AiChatBridge {
      * Memperbarui status pet (lapar, energi, kebahagiaan) untuk disisipkan ke konteks prompt Gemini
      */
     fun updatePetStatus(hunger: Float, energy: Float, happiness: Float)
+
+    /**
+     * Mengosongkan riwayat obrolan multi-turn Gemini untuk memulai topik baru
+     */
+    fun resetChatHistory()
 }
