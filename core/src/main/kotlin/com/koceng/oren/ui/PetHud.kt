@@ -1,21 +1,17 @@
 package com.koceng.oren.ui
 
-import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.Batch
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.TextureRegion
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
-import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
-import com.badlogic.gdx.scenes.scene2d.ui.Stack
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable
@@ -23,377 +19,315 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.Disposable
 import com.badlogic.gdx.utils.viewport.ExtendViewport
+import kotlin.math.sin
 import kotlin.math.sqrt
+
+enum class HudAiState {
+    IDLE,
+    LISTENING,
+    THINKING,
+    SPEAKING
+}
 
 class PetHud : Disposable {
 
     val stage: Stage = Stage(ExtendViewport(480f, 800f))
-    private val shapeRenderer = ShapeRenderer()
     private val managedTextures = mutableListOf<Texture>()
 
     // Fonts
-    private val labelFont: BitmapFont
     private val titleFont: BitmapFont
-    private val subtitleFont: BitmapFont
+    private val labelFont: BitmapFont
+    private val chatFont: BitmapFont
     private val smallFont: BitmapFont
 
-    // Callbacks untuk dihubungkan ke PetScreen & Game Logic
-    var onFeedClicked: (() -> Unit)? = null
-    var onSleepClicked: (() -> Unit)? = null
-    var onPlayClicked: (() -> Unit)? = null
-    var onModeToggleClicked: (() -> Unit)? = null
+    // Callbacks ke PetScreen
     var onTalkClicked: (() -> Unit)? = null
+    var onHomeworkToggleClicked: (() -> Unit)? = null
+    var onTypeClicked: (() -> Unit)? = null
     var onResetChatClicked: (() -> Unit)? = null
 
-    // Widgets - Top HUD
-    private val moodBadgeBtn: CircularActionButton
-    private val moodValueLabel: Label
-    private val modePillLabel: Label
-    private val modeToggleBtn: CircularActionButton
-    private val modeSideLabel: Label
-    private val resetChatContainer: Table
+    // Top Status Pill
+    private val statusTextLabel: Label
 
-    // Widgets - Side Mic Button (AI Mode)
-    private val talkContainer: Table
-    private val talkBtn: CircularActionButton
+    // Scrollable Chat Box
+    private val chatScrollPane: ScrollPane
+    private val userMsgLabel: Label
+    private val replyLabel: Label
+
+    // Bottom Glossy Circular Buttons
+    private val homeworkBtn: GlossyCircleButton
+    private val homeworkLabel: Label
+    private val talkBtn: GlossyCircleButton
     private val talkLabel: Label
-    private val talkIdleTex: Texture
-    private val talkListenTex: Texture
+    private val typeBtn: GlossyCircleButton
 
-    // Widgets - Subtitle Bubble
-    private val subtitleBox: Table
-    private val subtitleLabel: Label
-    private var subtitleTimer: Float = 0f
-    private var isSubtitleTimed: Boolean = false
-
-    // Widgets - Bottom Circular Status Buttons
-    private val feedBtn: CircularActionButton
-    private val sleepBtn: CircularActionButton
-    private val playBtn: CircularActionButton
-    private val feedPctLabel: Label
-    private val sleepTitleLabel: Label
-    private val sleepPctLabel: Label
-    private val playPctLabel: Label
-
-    // Shared outer ring texture
+    // Textures untuk variasi state tombol
     private val outerRingTex: Texture
+    private val activeRingTex: Texture
+    private val hwIdleTex: Texture
+    private val hwActiveTex: Texture
+    private val micIdleTex: Texture
+    private val micListenTex: Texture
+    private val micThinkTex: Texture
+    private val micSpeakTex: Texture
+
+    private var isHomeworkActive: Boolean = false
+    private var currentState: HudAiState = HudAiState.IDLE
 
     init {
-        labelFont = createFont(1.22f)
-        titleFont = createFont(1.48f)
-        subtitleFont = createFont(1.25f)
+        titleFont = createFont(1.30f)
+        labelFont = createFont(1.18f)
+        chatFont = createFont(1.16f)
         smallFont = createFont(0.98f)
 
-        outerRingTex = createOuterRingTexture()
+        outerRingTex = createOuterRingTexture(Color.WHITE)
+        activeRingTex = createOuterRingTexture(Color(1f, 0.86f, 0.25f, 1f))
 
-        val whiteLabelStyle = Label.LabelStyle(labelFont, Color.WHITE)
-        val titleLabelStyle = Label.LabelStyle(titleFont, Color.WHITE)
-        val subtitleLabelStyle = Label.LabelStyle(subtitleFont, Color(1f, 0.96f, 0.84f, 1f))
-        val smallLabelStyle = Label.LabelStyle(smallFont, Color(0.96f, 0.98f, 1f, 0.95f))
+        val titleStyle = Label.LabelStyle(titleFont, Color.WHITE)
+        val labelStyle = Label.LabelStyle(labelFont, Color.WHITE)
+        val smallStyle = Label.LabelStyle(smallFont, Color(0.86f, 0.94f, 1f, 0.95f))
+        val userChatStyle = Label.LabelStyle(chatFont, Color(0.55f, 0.90f, 1f, 1f))
+        val replyChatStyle = Label.LabelStyle(chatFont, Color(1f, 0.96f, 0.86f, 1f))
 
-        // Glossy textures dengan ikon kartun
-        val moodInnerTex = createGlossyDiscTexture(
-            topColor = Color(0.28f, 0.72f, 0.98f, 1f),
-            bottomColor = Color(0.10f, 0.44f, 0.82f, 1f),
-            iconType = IconType.NONE
+        // Glossy disc textures
+        hwIdleTex = createGlossyDiscTexture(
+            Color(0.98f, 0.72f, 0.20f, 1f),
+            Color(0.80f, 0.46f, 0.08f, 1f),
+            IconType.BOOK
         )
-        val feedInnerTex = createGlossyDiscTexture(
-            topColor = Color(0.24f, 0.86f, 0.34f, 1f),
-            bottomColor = Color(0.08f, 0.62f, 0.18f, 1f),
-            iconType = IconType.FOOD
+        hwActiveTex = createGlossyDiscTexture(
+            Color(0.22f, 0.84f, 0.44f, 1f),
+            Color(0.08f, 0.56f, 0.22f, 1f),
+            IconType.BOOK
         )
-        val sleepInnerTex = createGlossyDiscTexture(
-            topColor = Color(0.98f, 0.78f, 0.18f, 1f),
-            bottomColor = Color(0.76f, 0.50f, 0.06f, 1f),
-            iconType = IconType.MOON
+        micIdleTex = createGlossyDiscTexture(
+            Color(0.22f, 0.74f, 0.98f, 1f),
+            Color(0.08f, 0.44f, 0.80f, 1f),
+            IconType.MIC
         )
-        val playInnerTex = createGlossyDiscTexture(
-            topColor = Color(0.26f, 0.84f, 0.44f, 1f),
-            bottomColor = Color(0.09f, 0.60f, 0.24f, 1f),
-            iconType = IconType.BALL
+        micListenTex = createGlossyDiscTexture(
+            Color(0.98f, 0.34f, 0.32f, 1f),
+            Color(0.74f, 0.14f, 0.14f, 1f),
+            IconType.MIC
         )
-        val modeInnerTex = createGlossyDiscTexture(
-            topColor = Color(0.76f, 0.44f, 0.96f, 1f),
-            bottomColor = Color(0.48f, 0.20f, 0.76f, 1f),
-            iconType = IconType.MODE
+        micThinkTex = createGlossyDiscTexture(
+            Color(0.98f, 0.64f, 0.18f, 1f),
+            Color(0.78f, 0.38f, 0.06f, 1f),
+            IconType.THINK
         )
-        talkIdleTex = createGlossyDiscTexture(
-            topColor = Color(0.22f, 0.78f, 0.94f, 1f),
-            bottomColor = Color(0.08f, 0.50f, 0.76f, 1f),
-            iconType = IconType.MIC
+        micSpeakTex = createGlossyDiscTexture(
+            Color(0.20f, 0.82f, 0.46f, 1f),
+            Color(0.08f, 0.56f, 0.26f, 1f),
+            IconType.STOP
         )
-        talkListenTex = createGlossyDiscTexture(
-            topColor = Color(0.98f, 0.36f, 0.34f, 1f),
-            bottomColor = Color(0.74f, 0.14f, 0.14f, 1f),
-            iconType = IconType.MIC
+        val typeTex = createGlossyDiscTexture(
+            Color(0.74f, 0.42f, 0.96f, 1f),
+            Color(0.46f, 0.20f, 0.76f, 1f),
+            IconType.CHAT
         )
-        val resetInnerTex = createGlossyDiscTexture(
-            topColor = Color(0.96f, 0.36f, 0.34f, 1f),
-            bottomColor = Color(0.72f, 0.14f, 0.16f, 1f),
-            iconType = IconType.RESET
+        val resetTex = createGlossyDiscTexture(
+            Color(0.92f, 0.34f, 0.34f, 1f),
+            Color(0.68f, 0.14f, 0.16f, 1f),
+            IconType.RESET
         )
 
         val rootTable = Table().apply {
             setFillParent(true)
-            pad(14f, 16f, 18f, 16f)
+            pad(16f, 16f, 20f, 16f)
         }
         stage.addActor(rootTable)
 
         // ==========================================
-        // 1. BARIS ATAS: Badge Mood (Kiri), Pill Mode (Tengah), Tombol Mode & Reset (Kanan)
+        // 1. TOP BAR: Pill Nama & Status AI + Tombol Reset
         // ==========================================
         val topBar = Table()
 
-        // Kiri Atas: Badge Mood bergaya LVL ring
-        moodBadgeBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = moodInnerTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = true,
-            fixedRingColor = Color(0.22f, 0.78f, 1f, 1f)
-        )
-        val moodTextTable = Table().apply {
-            touchable = Touchable.disabled
-        }
-        moodTextTable.add(Label("MOOD", smallLabelStyle)).row()
-        moodValueLabel = Label("85%", titleLabelStyle)
-        moodTextTable.add(moodValueLabel).padTop(-4f)
-
-        val moodStack = Stack().apply {
-            add(moodBadgeBtn)
-            add(moodTextTable)
-        }
-
-        // Tengah Atas: Pill indikator mode aktif
-        val pillBg = createRoundedRectDrawable(
-            width = 210,
-            height = 46,
-            radius = 22,
-            fillColor = Color(0.10f, 0.14f, 0.22f, 0.72f),
+        val headerBg = createRoundedRectDrawable(
+            width = 300,
+            height = 68,
+            radius = 28,
+            fillColor = Color(0.08f, 0.12f, 0.20f, 0.76f),
             borderColor = Color(1f, 1f, 1f, 0.45f),
             borderWidth = 2
         )
-        val modePill = Table().apply {
-            background = pillBg
-            pad(6f, 18f, 6f, 18f)
+        val headerPill = Table().apply {
+            background = headerBg
+            pad(8f, 18f, 8f, 18f)
         }
-        modePillLabel = Label("Mode: Tiru Suara", whiteLabelStyle).apply {
-            setAlignment(Align.center)
-        }
-        modePill.add(modePillLabel)
+        headerPill.add(Label("KOCENG OREN AI", titleStyle)).left().row()
+        statusTextLabel = Label("Mode: Obrolan Santai", smallStyle)
+        headerPill.add(statusTextLabel).left().padTop(1f)
 
-        // Kanan Atas: Tombol Ganti Mode + Reset Chat (di bawahnya)
-        val rightTopCol = Table()
-        modeToggleBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = modeInnerTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = false
-        ).apply {
-            onClick = { onModeToggleClicked?.invoke() }
-        }
-        modeSideLabel = Label("Tiru", smallLabelStyle).apply {
-            setAlignment(Align.center)
-        }
-        rightTopCol.add(modeToggleBtn).size(64f).row()
-        rightTopCol.add(modeSideLabel).padTop(2f).row()
-
-        val resetBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = resetInnerTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = false
-        ).apply {
+        val resetBtn = GlossyCircleButton(outerRingTex, resetTex).apply {
             onClick = { onResetChatClicked?.invoke() }
         }
-        resetChatContainer = Table().apply {
-            isVisible = false
-            padTop(8f)
+        val resetCol = Table().apply {
             add(resetBtn).size(56f).row()
-            add(Label("Reset", smallLabelStyle)).padTop(2f)
+            add(Label("Reset", smallStyle)).padTop(2f)
         }
-        rightTopCol.add(resetChatContainer)
 
-        topBar.add(moodStack).size(82f).top().left()
-        topBar.add(modePill).expandX().top().padTop(12f)
-        topBar.add(rightTopCol).top().right()
+        topBar.add(headerPill).left().top()
+        topBar.add().expandX()
+        topBar.add(resetCol).right().top()
 
         rootTable.add(topBar).expandX().fillX().top().row()
 
         // ==========================================
-        // 2. BAGIAN TENGAH: Tombol Mic AI di Sisi Kiri + Ruang Luas untuk Kucing 3D
+        // 2. RUANG TENGAH TERBUKA UNTUK KARAKTER 3D
         // ==========================================
-        val middleArea = Table()
-        talkBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = talkIdleTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = false
-        ).apply {
-            onClick = { onTalkClicked?.invoke() }
-        }
-        talkLabel = Label("Bicara", smallLabelStyle).apply {
-            setAlignment(Align.center)
-        }
-        talkContainer = Table().apply {
-            isVisible = false
-            add(talkBtn).size(70f).row()
-            add(talkLabel).padTop(2f)
-        }
-        middleArea.add(talkContainer).left().bottom().padBottom(16f)
-        middleArea.add().expand()
-
-        rootTable.add(middleArea).expand().fill().row()
+        rootTable.add().expand().row()
 
         // ==========================================
-        // 3. KOTAK SUBTITLE / BALON UCAPAN
+        // 3. PANEL CHAT SCROLLABLE (Untuk Obrolan & Jawaban PR Panjang)
         // ==========================================
-        val subtitleBg = createRoundedRectDrawable(
-            width = 360,
-            height = 76,
-            radius = 22,
-            fillColor = Color(0.08f, 0.11f, 0.18f, 0.80f),
-            borderColor = Color(1f, 1f, 1f, 0.55f),
+        val chatCardBg = createRoundedRectDrawable(
+            width = 420,
+            height = 180,
+            radius = 24,
+            fillColor = Color(0.07f, 0.10f, 0.17f, 0.84f),
+            borderColor = Color(1f, 1f, 1f, 0.50f),
             borderWidth = 3
         )
-        subtitleBox = Table().apply {
-            background = subtitleBg
-            pad(12f, 20f, 12f, 20f)
+        val chatContent = Table().apply {
+            pad(8f, 12f, 8f, 12f)
+            top().left()
         }
-        subtitleLabel = Label("Meong! Halo, aku Koceng Oren!", subtitleLabelStyle).apply {
+
+        userMsgLabel = Label("", userChatStyle).apply {
             setWrap(true)
-            setAlignment(Align.center)
+            setAlignment(Align.left)
+            isVisible = false
         }
-        subtitleBox.add(subtitleLabel).width(400f)
-        rootTable.add(subtitleBox).center().padBottom(14f).row()
+        replyLabel = Label("Apaan sih manggil-manggil? Mau ngobrol atau nyuruh gue ngerjain PR lu lagi?", replyChatStyle).apply {
+            setWrap(true)
+            setAlignment(Align.left)
+        }
+
+        chatContent.add(userMsgLabel).width(392f).left().padBottom(6f).row()
+        chatContent.add(replyLabel).width(392f).left()
+
+        chatScrollPane = ScrollPane(chatContent, ScrollPane.ScrollPaneStyle()).apply {
+            setScrollingDisabled(true, false)
+            setFadeScrollBars(true)
+            setOverscroll(false, true)
+        }
+
+        val chatBox = Table().apply {
+            background = chatCardBg
+            pad(10f, 12f, 10f, 12f)
+            add(chatScrollPane).width(416f).maxHeight(168f).minHeight(78f)
+        }
+
+        rootTable.add(chatBox).center().padBottom(14f).row()
 
         // ==========================================
-        // 4. BARIS BAWAH: 3 Tombol Bulat Glossy + Ring Progress (Makan, Tidur, Main)
+        // 4. BOTTOM DOCK: PR Sekolah | Bicara (Utama) | Ketik
         // ==========================================
         val bottomDock = Table()
 
-        feedBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = feedInnerTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = true
-        ).apply {
-            onClick = { onFeedClicked?.invoke() }
+        homeworkBtn = GlossyCircleButton(outerRingTex, hwIdleTex).apply {
+            onClick = { onHomeworkToggleClicked?.invoke() }
         }
-        feedPctLabel = Label("85%", smallLabelStyle)
+        homeworkLabel = Label("PR Sekolah", labelStyle)
 
-        sleepBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = sleepInnerTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = true
-        ).apply {
-            onClick = { onSleepClicked?.invoke() }
+        talkBtn = GlossyCircleButton(outerRingTex, micIdleTex).apply {
+            onClick = { onTalkClicked?.invoke() }
         }
-        sleepTitleLabel = Label("Tidur", whiteLabelStyle)
-        sleepPctLabel = Label("90%", smallLabelStyle)
+        talkLabel = Label("Bicara", labelStyle)
 
-        playBtn = CircularActionButton(
-            outerRingTex = outerRingTex,
-            innerTex = playInnerTex,
-            shapeRenderer = shapeRenderer,
-            hasProgressRing = true
-        ).apply {
-            onClick = { onPlayClicked?.invoke() }
-        }
-        playPctLabel = Label("80%", smallLabelStyle)
-
-        fun buildDockItem(btn: CircularActionButton, titleLabel: Label, pctLabel: Label): Table {
-            return Table().apply {
-                add(btn).size(92f).row()
-                add(titleLabel).padTop(4f).row()
-                add(pctLabel).padTop(-2f)
-            }
+        typeBtn = GlossyCircleButton(outerRingTex, typeTex).apply {
+            onClick = { onTypeClicked?.invoke() }
         }
 
-        bottomDock.add(buildDockItem(feedBtn, Label("Makan", whiteLabelStyle), feedPctLabel)).expandX()
-        bottomDock.add(buildDockItem(sleepBtn, sleepTitleLabel, sleepPctLabel)).expandX()
-        bottomDock.add(buildDockItem(playBtn, Label("Main", whiteLabelStyle), playPctLabel)).expandX()
+        val leftCol = Table().apply {
+            add(homeworkBtn).size(78f).row()
+            add(homeworkLabel).padTop(5f)
+        }
+        val centerCol = Table().apply {
+            add(talkBtn).size(98f).row()
+            add(talkLabel).padTop(5f)
+        }
+        val rightCol = Table().apply {
+            add(typeBtn).size(78f).row()
+            add(Label("Ketik", labelStyle)).padTop(5f)
+        }
+
+        bottomDock.add(leftCol).expandX().bottom()
+        bottomDock.add(centerCol).expandX().bottom()
+        bottomDock.add(rightCol).expandX().bottom()
 
         rootTable.add(bottomDock).expandX().fillX().bottom()
     }
 
-    /**
-     * Memperbarui visual ring progress dan label status virtual pet
-     */
-    fun updateStatus(hunger: Float, energy: Float, happiness: Float, isSleeping: Boolean) {
-        val hPct = hunger.coerceIn(0f, 100f)
-        val ePct = energy.coerceIn(0f, 100f)
-        val hapPct = happiness.coerceIn(0f, 100f)
-        val overall = (hPct + ePct + hapPct) / 3f
-
-        feedBtn.progress = hPct / 100f
-        sleepBtn.progress = ePct / 100f
-        playBtn.progress = hapPct / 100f
-        moodBadgeBtn.progress = overall / 100f
-
-        moodValueLabel.setText("${overall.toInt()}%")
-        feedPctLabel.setText("${hPct.toInt()}%")
-        sleepPctLabel.setText("${ePct.toInt()}%")
-        playPctLabel.setText("${hapPct.toInt()}%")
-        sleepTitleLabel.setText(if (isSleeping) "Bangun" else "Tidur")
-    }
-
-    /**
-     * Mengatur tampilan mode (Tiru Suara vs Ngobrol AI)
-     */
-    fun setMode(isAiMode: Boolean) {
-        if (isAiMode) {
-            modePillLabel.setText("Mode: Ngobrol AI")
-            modeSideLabel.setText("AI")
-            talkContainer.isVisible = true
-            resetChatContainer.isVisible = true
-            showSubtitle("Mode Ngobrol AI aktif! Tekan tombol Bicara di kiri untuk mengobrol.", 4f)
+    fun setHomeworkMode(enabled: Boolean) {
+        isHomeworkActive = enabled
+        if (enabled) {
+            homeworkBtn.outerTex = activeRingTex
+            homeworkBtn.innerTex = hwActiveTex
+            homeworkLabel.setText("PR: AKTIF")
+            if (currentState == HudAiState.IDLE) {
+                statusTextLabel.setText("Mode: PR Sekolah (Siap)")
+            }
         } else {
-            modePillLabel.setText("Mode: Tiru Suara")
-            modeSideLabel.setText("Tiru")
-            talkContainer.isVisible = false
-            resetChatContainer.isVisible = false
-            showSubtitle("Mode Tiru Suara aktif. Ucapkan sesuatu ke mic!", 3f)
+            homeworkBtn.outerTex = outerRingTex
+            homeworkBtn.innerTex = hwIdleTex
+            homeworkLabel.setText("PR Sekolah")
+            if (currentState == HudAiState.IDLE) {
+                statusTextLabel.setText("Mode: Obrolan Santai")
+            }
         }
     }
 
-    fun setTalkButtonState(isListening: Boolean) {
-        if (isListening) {
-            talkBtn.innerTex = talkListenTex
-            talkLabel.setText("Dengar...")
-            showSubtitle("Mendengarkan suaramu...", 0f)
-        } else {
-            talkBtn.innerTex = talkIdleTex
-            talkLabel.setText("Bicara")
+    fun setStatusState(state: HudAiState) {
+        currentState = state
+        when (state) {
+            HudAiState.IDLE -> {
+                talkBtn.innerTex = micIdleTex
+                talkBtn.isPulsing = false
+                talkLabel.setText("Bicara")
+                statusTextLabel.setText(if (isHomeworkActive) "Mode: PR Sekolah (Siap)" else "Mode: Obrolan Santai")
+            }
+            HudAiState.LISTENING -> {
+                talkBtn.innerTex = micListenTex
+                talkBtn.isPulsing = true
+                talkLabel.setText("Dengar...")
+                statusTextLabel.setText("Lagi dengerin lu ngomong...")
+            }
+            HudAiState.THINKING -> {
+                talkBtn.innerTex = micThinkTex
+                talkBtn.isPulsing = true
+                talkLabel.setText("Mikir...")
+                statusTextLabel.setText(if (isHomeworkActive) "Lagi ngerjain PR lu..." else "Bentar, lagi mikir...")
+            }
+            HudAiState.SPEAKING -> {
+                talkBtn.innerTex = micSpeakTex
+                talkBtn.isPulsing = false
+                talkLabel.setText("Stop")
+                statusTextLabel.setText("Koceng Oren lagi ngomong...")
+            }
         }
     }
 
-    fun showSubtitle(text: String, durationSeconds: Float = 0f) {
-        subtitleLabel.setText(text)
-        subtitleBox.isVisible = true
-        if (durationSeconds > 0f) {
-            subtitleTimer = durationSeconds
-            isSubtitleTimed = true
-        } else {
-            isSubtitleTimed = false
-        }
+    fun showUserMessage(text: String) {
+        userMsgLabel.setText("Kamu: $text")
+        userMsgLabel.isVisible = true
+        chatScrollPane.scrollY = 0f
     }
 
-    fun hideSubtitle() {
-        subtitleBox.isVisible = false
-        isSubtitleTimed = false
+    fun showReply(text: String) {
+        replyLabel.setText(text)
+        chatScrollPane.layout()
+        chatScrollPane.scrollY = 0f
+    }
+
+    fun clearChat() {
+        userMsgLabel.setText("")
+        userMsgLabel.isVisible = false
+        replyLabel.setText("Ingatan obrolan udah gue hapus! Mau bahas apa lagi sekarang?")
+        chatScrollPane.scrollY = 0f
     }
 
     fun render(delta: Float) {
-        if (isSubtitleTimed) {
-            subtitleTimer -= delta
-            if (subtitleTimer <= 0f) {
-                isSubtitleTimed = false
-                subtitleBox.isVisible = false
-            }
-        }
-
         stage.act(delta)
         stage.draw()
     }
@@ -404,10 +338,9 @@ class PetHud : Disposable {
 
     override fun dispose() {
         stage.dispose()
-        shapeRenderer.dispose()
-        labelFont.dispose()
         titleFont.dispose()
-        subtitleFont.dispose()
+        labelFont.dispose()
+        chatFont.dispose()
         smallFont.dispose()
         managedTextures.forEach { it.dispose() }
         managedTextures.clear()
@@ -432,36 +365,34 @@ class PetHud : Disposable {
         return tex
     }
 
-    private fun createOuterRingTexture(): Texture {
+    private fun createOuterRingTexture(ringColor: Color): Texture {
         val size = 160
         val cx = size / 2f
         val cy = size / 2f
         val pm = Pixmap(size, size, Pixmap.Format.RGBA8888)
         pm.blending = Pixmap.Blending.SourceOver
 
-        // Bayangan lembut di bawah lingkaran
         for (y in 0 until size) {
             for (x in 0 until size) {
                 val dx = x - cx
                 val dy = y - (cy + 5f)
                 val d = sqrt(dx * dx + dy * dy)
                 if (d < 74f) {
-                    val a = ((74f - d) / 14f).coerceIn(0f, 1f) * 0.38f
-                    pm.drawPixel(x, y, Color.rgba8888(0.05f, 0.06f, 0.10f, a))
+                    val a = ((74f - d) / 14f).coerceIn(0f, 1f) * 0.40f
+                    pm.drawPixel(x, y, Color.rgba8888(0.04f, 0.06f, 0.10f, a))
                 }
             }
         }
 
-        // Bingkai putih tegas + outline gelap tipis
-        pm.setColor(0.14f, 0.16f, 0.22f, 0.90f)
+        pm.setColor(0.12f, 0.15f, 0.22f, 0.92f)
         pm.fillCircle(size / 2, size / 2 - 2, 72)
-        pm.setColor(1f, 1f, 1f, 1f)
+        pm.setColor(ringColor)
         pm.fillCircle(size / 2, size / 2 - 2, 69)
 
         return registerTexture(pm)
     }
 
-    private enum class IconType { NONE, FOOD, MOON, BALL, MODE, MIC, RESET }
+    private enum class IconType { MIC, BOOK, CHAT, RESET, THINK, STOP }
 
     private fun createGlossyDiscTexture(
         topColor: Color,
@@ -485,89 +416,72 @@ class PetHud : Disposable {
                     val t = (y.toFloat() / size).coerceIn(0f, 1f)
                     c.set(topColor).lerp(bottomColor, t)
 
-                    // Kilau glossy di bagian atas
+                    // Kilau glossy di atas
                     val gx = dx / (radius * 0.72f)
                     val gy = (y - (cy - radius * 0.42f)) / (radius * 0.36f)
                     val gd = gx * gx + gy * gy
                     if (gd < 1f) {
-                        val sheen = (1f - gd) * 0.42f
-                        c.lerp(Color.WHITE, sheen)
+                        c.lerp(Color.WHITE, (1f - gd) * 0.42f)
                     }
 
-                    // Anti-alias tepi lingkaran
                     val alpha = (radius - d).coerceIn(0f, 1f)
                     pm.drawPixel(x, y, Color.rgba8888(c.r, c.g, c.b, alpha))
                 }
             }
         }
 
-        // Gambar ikon kartun di tengah disc
         val ic = size / 2
         when (iconType) {
-            IconType.FOOD -> {
-                // Sendok (kiri) & Garpu (kanan) putih
-                pm.setColor(Color.WHITE)
-                // Sendok
-                pm.fillCircle(ic - 20, ic - 22, 13)
-                pm.fillRectangle(ic - 24, ic - 12, 8, 46)
-                pm.fillCircle(ic - 20, ic + 34, 4)
-                // Garpu
-                pm.fillRectangle(ic + 12, ic - 34, 5, 22)
-                pm.fillRectangle(ic + 20, ic - 34, 5, 22)
-                pm.fillRectangle(ic + 28, ic - 34, 5, 22)
-                pm.fillRectangle(ic + 12, ic - 14, 21, 9)
-                pm.fillRectangle(ic + 19, ic - 6, 8, 40)
-                pm.fillCircle(ic + 23, ic + 34, 4)
-            }
-            IconType.MOON -> {
-                // Bulan sabit kuning terang + 2 bintang kecil
-                pm.setColor(1f, 0.98f, 0.80f, 1f)
-                pm.fillCircle(ic - 4, ic, 30)
-                pm.setColor(topColor.cpy().lerp(bottomColor, 0.5f))
-                pm.fillCircle(ic + 12, ic - 8, 25)
-                pm.setColor(1f, 0.98f, 0.82f, 1f)
-                pm.fillCircle(ic + 20, ic - 16, 6)
-                pm.fillCircle(ic + 28, ic + 4, 4)
-            }
-            IconType.BALL -> {
-                // Bola pantai warna-warni
-                pm.setColor(0.98f, 0.30f, 0.28f, 1f)
-                pm.fillCircle(ic, ic, 30)
-                pm.setColor(0.20f, 0.72f, 0.96f, 1f)
-                pm.fillCircle(ic - 10, ic - 10, 18)
-                pm.setColor(1f, 0.88f, 0.22f, 1f)
-                pm.fillCircle(ic + 12, ic + 12, 15)
-                pm.setColor(Color.WHITE)
-                pm.fillCircle(ic, ic, 7)
-            }
             IconType.MIC -> {
-                // Ikon mikrofon putih
                 pm.setColor(Color.WHITE)
                 pm.fillCircle(ic, ic - 18, 13)
                 pm.fillRectangle(ic - 13, ic - 18, 26, 26)
                 pm.fillCircle(ic, ic + 8, 13)
-                // Penyangga mic
                 pm.fillRectangle(ic - 20, ic + 6, 5, 12)
                 pm.fillRectangle(ic + 15, ic + 6, 5, 12)
                 pm.fillRectangle(ic - 20, ic + 16, 40, 5)
                 pm.fillRectangle(ic - 3, ic + 20, 6, 14)
                 pm.fillRectangle(ic - 14, ic + 32, 28, 5)
             }
-            IconType.MODE -> {
-                // Ikon balon chat + sparkle AI
+            IconType.BOOK -> {
+                // Ikon buku terbuka untuk PR Sekolah
                 pm.setColor(Color.WHITE)
-                pm.fillCircle(ic - 8, ic - 4, 22)
+                pm.fillRectangle(ic - 30, ic - 22, 27, 44)
+                pm.fillRectangle(ic + 3, ic - 22, 27, 44)
+                pm.fillCircle(ic, ic + 20, 6)
+                pm.setColor(bottomColor)
+                pm.fillRectangle(ic - 24, ic - 12, 16, 4)
+                pm.fillRectangle(ic - 24, ic - 2, 16, 4)
+                pm.fillRectangle(ic - 24, ic + 8, 12, 4)
+                pm.fillRectangle(ic + 8, ic - 12, 16, 4)
+                pm.fillRectangle(ic + 8, ic - 2, 16, 4)
+                pm.fillRectangle(ic + 8, ic + 8, 12, 4)
+            }
+            IconType.CHAT -> {
+                // Ikon balon ketik pesan
+                pm.setColor(Color.WHITE)
+                pm.fillCircle(ic - 10, ic - 4, 21)
                 pm.fillCircle(ic + 12, ic - 4, 18)
                 pm.fillRectangle(ic - 10, ic - 22, 24, 36)
                 pm.fillTriangle(ic - 16, ic + 12, ic - 26, ic + 28, ic - 2, ic + 16)
-                // Titik obrolan
                 pm.setColor(bottomColor)
                 pm.fillCircle(ic - 10, ic - 4, 4)
                 pm.fillCircle(ic + 2, ic - 4, 4)
                 pm.fillCircle(ic + 14, ic - 4, 4)
             }
+            IconType.THINK -> {
+                // Ikon 3 titik berpikir
+                pm.setColor(Color.WHITE)
+                pm.fillCircle(ic - 22, ic, 8)
+                pm.fillCircle(ic, ic, 8)
+                pm.fillCircle(ic + 22, ic, 8)
+            }
+            IconType.STOP -> {
+                // Ikon kotak stop
+                pm.setColor(Color.WHITE)
+                pm.fillRectangle(ic - 18, ic - 18, 36, 36)
+            }
             IconType.RESET -> {
-                // Ikon panah reset melingkar
                 pm.setColor(Color.WHITE)
                 pm.fillCircle(ic, ic, 26)
                 pm.setColor(topColor.cpy().lerp(bottomColor, 0.5f))
@@ -576,7 +490,6 @@ class PetHud : Disposable {
                 pm.setColor(Color.WHITE)
                 pm.fillTriangle(ic + 4, ic - 30, ic + 24, ic - 16, ic + 4, ic - 4)
             }
-            IconType.NONE -> {}
         }
 
         return registerTexture(pm)
@@ -618,21 +531,18 @@ class PetHud : Disposable {
     }
 
     // ==========================================
-    // Custom Actor: Tombol Bulat Glossy + Ring Progress
+    // Custom Actor: Tombol Bulat Glossy dengan Efek Tekan & Pulse
     // ==========================================
-    private class CircularActionButton(
-        private val outerRingTex: Texture,
-        var innerTex: Texture,
-        private val shapeRenderer: ShapeRenderer,
-        private val hasProgressRing: Boolean,
-        private val fixedRingColor: Color? = null
+    private class GlossyCircleButton(
+        var outerTex: Texture,
+        var innerTex: Texture
     ) : Actor() {
 
-        var progress: Float = 1f
         var onClick: (() -> Unit)? = null
+        var isPulsing: Boolean = false
 
-        private var displayProgress: Float = 1f
         private var pressScale: Float = 1f
+        private var pulseTime: Float = 0f
         private val clickListener: ClickListener
 
         init {
@@ -646,52 +556,25 @@ class PetHud : Disposable {
 
         override fun act(delta: Float) {
             super.act(delta)
-            displayProgress = MathUtils.lerp(displayProgress, progress.coerceIn(0f, 1f), delta * 6f)
             val targetScale = if (clickListener.isPressed) 0.90f else 1.0f
             pressScale = MathUtils.lerp(pressScale, targetScale, delta * 18f)
+            if (isPulsing) {
+                pulseTime += delta * 6f
+            } else {
+                pulseTime = 0f
+            }
         }
 
         override fun draw(batch: Batch, parentAlpha: Float) {
-            val size = minOf(width, height) * pressScale
+            val pulseBoost = if (isPulsing) 1f + 0.05f * sin(pulseTime) else 1f
+            val size = minOf(width, height) * pressScale * pulseBoost
             val cx = x + width * 0.5f
             val cy = y + height * 0.5f
-            val drawX = cx - size * 0.5f
-            val drawY = cy - size * 0.5f
 
             batch.setColor(1f, 1f, 1f, color.a * parentAlpha)
-            batch.draw(outerRingTex, drawX, drawY, size, size)
+            batch.draw(outerTex, cx - size * 0.5f, cy - size * 0.5f, size, size)
 
-            if (hasProgressRing) {
-                batch.end()
-                Gdx.gl.glEnable(GL20.GL_BLEND)
-                Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
-                shapeRenderer.projectionMatrix = batch.projectionMatrix
-                shapeRenderer.transformMatrix = batch.transformMatrix
-                shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-
-                val ringRadius = size * 0.42f
-                val ringCy = cy + size * 0.012f
-
-                // Track gelap di belakang ring
-                shapeRenderer.setColor(0.18f, 0.22f, 0.28f, 0.85f * parentAlpha)
-                shapeRenderer.circle(cx, ringCy, ringRadius, 40)
-
-                // Warna ring otomatis (hijau / kuning / merah) atau warna tetap
-                val ringColor = fixedRingColor ?: when {
-                    displayProgress >= 0.55f -> Color(0.16f, 0.86f, 0.26f, 1f)
-                    displayProgress >= 0.28f -> Color(0.98f, 0.78f, 0.14f, 1f)
-                    else -> Color(0.96f, 0.24f, 0.22f, 1f)
-                }
-                shapeRenderer.setColor(ringColor.r, ringColor.g, ringColor.b, parentAlpha)
-                shapeRenderer.arc(cx, ringCy, ringRadius, 90f, -360f * displayProgress.coerceIn(0.02f, 1f), 48)
-                shapeRenderer.end()
-                batch.begin()
-                batch.setColor(1f, 1f, 1f, color.a * parentAlpha)
-            }
-
-            // Disc glossy & ikon di tengah (menutup tengah arc menjadi cincin rapi)
-            val innerFactor = if (hasProgressRing) 0.70f else 0.80f
-            val innerSize = size * innerFactor
+            val innerSize = size * 0.82f
             batch.draw(
                 innerTex,
                 cx - innerSize * 0.5f,
