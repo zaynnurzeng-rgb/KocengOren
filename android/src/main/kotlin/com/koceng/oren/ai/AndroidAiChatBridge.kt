@@ -33,8 +33,8 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
 
     companion object {
         private const val GEMINI_HOST = "generativelanguage.googleapis.com"
-        private const val GEMINI_CHAT_MODEL = "gemini-2.5-flash"
-        private const val GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
+        private const val GEMINI_CHAT_MODEL = "gemini-3.8-flash"
+        private const val GEMINI_TTS_MODEL = "gemini-3.8-flash-tts"
         private const val GEMINI_VOICE_NAME = "Puck"
         private const val PCM_SAMPLE_RATE = 24000
         private const val UTTERANCE_ID = "koceng_oren_fallback_tts"
