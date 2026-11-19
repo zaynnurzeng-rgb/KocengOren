@@ -3,11 +3,14 @@ package com.koceng.oren.character
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.g3d.model.Node
 import com.badlogic.gdx.math.Quaternion
+import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.math.collision.BoundingBox
 import com.badlogic.gdx.utils.Disposable
 import net.mgsx.gltf.loaders.glb.GLBLoader
+import net.mgsx.gltf.scene3d.model.NodePartPlus
+import net.mgsx.gltf.scene3d.model.NodePlus
 import net.mgsx.gltf.scene3d.scene.Scene
 import net.mgsx.gltf.scene3d.scene.SceneAsset
 import kotlin.math.abs
@@ -62,7 +65,8 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     private var laughTimer: Float = 0f
     private var eatTimer: Float = 0f
 private val headNodes = mutableListOf<Node>()
-private val jawNodes = mutableListOf<Node>()
+    private var talkBlend: Float = 0f
+    private val jawNodes = mutableListOf<Node>()
 private val leftArmNodes = mutableListOf<Node>()
 private val rightArmNodes = mutableListOf<Node>()
 private val talkQuat = Quaternion()
@@ -129,7 +133,7 @@ private val talkQuat = Quaternion()
                 id.contains("foot") || id.contains("toe") || id.contains("hip") || id.contains("pelvis")
             if (!isLowerBody) {
                 when {
-                    id.contains("jaw") || id.contains("mouth") -> jawNodes.add(node)
+                    id.contains("jaw") || id.contains("mouth")  || id.contains("chin") || id.contains("lip") || id.contains("muzzle") || id.contains("snout")-> jawNodes.add(node)
                     id.contains("head") || id.contains("neck") -> headNodes.add(node)
                     id.contains("arm") || id.contains("shoulder") || id.contains("forearm") ||
                         id.contains("hand") || id.contains("clavicle") -> {
@@ -182,8 +186,9 @@ private val talkQuat = Quaternion()
 
         // 2. Animasi Transformasi Prosedural (Skala, Rotasi, Posisi)
         applyProceduralAnimation()
-
-        if (currentState == PetState.TALKING) {
+        talkBlend = MathUtils.lerp(talkBlend, if (currentState == PetState.TALKING) 1f else 0f, delta * 7.5f)
+        
+        if (talkBlend > 0.01f) {
             applyTalkingUpperBodyGestures()
         }
         // 3. Update Bounding Box di World Coordinates
@@ -191,29 +196,31 @@ private val talkQuat = Quaternion()
     }
 
     private fun applyTalkingUpperBodyGestures() {
-        val headPitch = sin(stateTime * 4.5f) * 5f + sin(stateTime * 2.1f) * 2.5f
-        val headYaw = sin(stateTime * 2.8f) * 6f
-        val headRoll = cos(stateTime * 3.2f) * 3f
+        val speechPulse = (abs(sin(stateTime * 9.5f)) * 0.65f + abs(sin(stateTime * 15.2f)) * 0.35f) * talkBlend
+        val headPitch = (sin(stateTime * 5.2f) * 2.2f + speechPulse * 2.0f) * talkBlend
+        val headYaw = sin(stateTime * 2.3f) * 3.8f * talkBlend
+        val headRoll = cos(stateTime * 1.9f) * 2.2f * talkBlend
         talkQuat.setEulerAngles(headYaw, headPitch, headRoll)
         for (node in headNodes) {
             node.rotation.mul(talkQuat)
         }
 
-        val jawOpen = (sin(stateTime * 11f) * 0.5f + 0.5f) * 14f
+        val jawOpen = speechPulse * 22f
         talkQuat.setEulerAngles(0f, jawOpen, 0f)
         for (node in jawNodes) {
             node.rotation.mul(talkQuat)
         }
-
-        val leftArmPitch = sin(stateTime * 4.2f) * 14f
-        val leftArmRoll = cos(stateTime * 3.1f) * 8f
+        applyMorphSpeech(scene.modelInstance.nodes, speechPulse)
+        
+        val leftArmPitch = sin(stateTime * 3.1f) * 8.5f * talkBlend
+        val leftArmRoll = cos(stateTime * 2.2f) * 5.0f * talkBlend
         talkQuat.setEulerAngles(0f, leftArmPitch, leftArmRoll)
         for (node in leftArmNodes) {
             node.rotation.mul(talkQuat)
         }
 
-        val rightArmPitch = -sin(stateTime * 4.2f) * 14f
-        val rightArmRoll = -cos(stateTime * 3.1f) * 8f
+        val rightArmPitch = -sin(stateTime * 3.1f) * 8.5f * talkBlend
+        val rightArmRoll = -cos(stateTime * 2.2f) * 5.0f * talkBlend
         talkQuat.setEulerAngles(0f, rightArmPitch, rightArmRoll)
         for (node in rightArmNodes) {
             node.rotation.mul(talkQuat)
@@ -221,7 +228,9 @@ private val talkQuat = Quaternion()
 
         scene.modelInstance.calculateTransforms()
     }
-
+    private fun applyMorphSpeech(nodes: Iterable<Node>, speechPulse: Float) {
+        val mouthValue = speechPulse * 0.85f; for (node in nodes) { if (node is NodePlus) { val w = node.weights; if (w != null && w.values.isNotEmpty()) { val names = node.morphTargetNames; var matched = false; if (names != null) { for (i in 0 until minOf(names.size, w.values.size)) { val n = names[i]?.lowercase() ?: ""; if (n.contains("mouth") || n.contains("jaw") || n.contains("open") || n.contains("talk") || n.contains("speak") || n.contains("lip")) { w.values[i] = mouthValue; matched = true } } }; if (!matched) w.values[0] = mouthValue } }; for (part in node.parts) { if (part is NodePartPlus) { val mt = part.morphTargets; if (mt != null && mt.values.isNotEmpty()) mt.values[0] = mouthValue } }; if (node.hasChildren()) applyMorphSpeech(node.children, speechPulse) } }
+    
     /**
      * Menghitung transformasi sinusoidal halus (napas, anggukan, goyangan pusing, lompatan ceria)
      * yang berjalan baik melengkapi klip animasi GLB maupun sebagai fallback murni.
