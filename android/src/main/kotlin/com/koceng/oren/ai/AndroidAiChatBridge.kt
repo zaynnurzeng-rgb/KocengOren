@@ -28,7 +28,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
-
+import android.media.MediaPlayer
+import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.CountDownLatch
 class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
 
     companion object {
@@ -54,7 +57,8 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
 
     @Volatile
     private var activeAudioTrack: AudioTrack? = null
-
+    @Volatile private var activeMediaPlayer: MediaPlayer? = null
+    
     @Volatile
     private var currentMode: ChatMode = ChatMode.CHAT
 
@@ -75,6 +79,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                     }
                     fallbackTts?.setPitch(1.0f)
                     fallbackTts?.setSpeechRate(1.05f)
+                    fallbackTts?.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     fallbackTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {
                             isSpeaking.set(true)
@@ -464,62 +469,15 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
     }
 
     private fun playPcmAudio(pcmBytes: ByteArray) {
-        val minBuf = AudioTrack.getMinBufferSize(
-            PCM_SAMPLE_RATE,
-            AudioFormat.CHANNEL_OUT_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        ).coerceAtLeast(4096)
-
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
-
-        val audioFormat = AudioFormat.Builder()
-            .setSampleRate(PCM_SAMPLE_RATE)
-            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-            .build()
-
-        val track = AudioTrack(
-            audioAttributes,
-            audioFormat,
-            minBuf,
-            AudioTrack.MODE_STREAM,
-            AudioManager.AUDIO_SESSION_ID_GENERATE
-        )
-
-        activeAudioTrack = track
-        isSpeaking.set(true)
-        notifySpeaking(true)
-
-        try {
-            track.play()
-            var offset = 0
-            val chunkSize = 4096
-            while (offset < pcmBytes.size && isSpeaking.get()) {
-                val len = minOf(chunkSize, pcmBytes.size - offset)
-                val written = track.write(pcmBytes, offset, len)
-                if (written <= 0) break
-                offset += written
-            }
-        } catch (_: Exception) {
-            // Diabaikan jika dihentikan paksa oleh stopAll()
-        } finally {
-            try {
-                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    track.stop()
-                }
-            } catch (_: Exception) {}
-            try {
-                track.release()
-            } catch (_: Exception) {}
-            if (activeAudioTrack === track) {
-                activeAudioTrack = null
-            }
-            isSpeaking.set(false)
-            notifySpeaking(false)
-        }
+        val sampleRate = 24000
+        val byteRate = sampleRate * 2
+        val dataSize = pcmBytes.size
+        val chunkSize = 36 + dataSize
+        val header = byteArrayOf('R'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(), 'F'.code.toByte(), (chunkSize and 0xff).toByte(), ((chunkSize shr 8) and 0xff).toByte(), ((chunkSize shr 16) and 0xff).toByte(), ((chunkSize shr 24) and 0xff).toByte(), 'W'.code.toByte(), 'A'.code.toByte(), 'V'.code.toByte(), 'E'.code.toByte(), 'f'.code.toByte(), 'm'.code.toByte(), 't'.code.toByte(), ' '.code.toByte(), 16, 0, 0, 0, 1, 0, 1, 0, (sampleRate and 0xff).toByte(), ((sampleRate shr 8) and 0xff).toByte(), ((sampleRate shr 16) and 0xff).toByte(), ((sampleRate shr 24) and 0xff).toByte(), (byteRate and 0xff).toByte(), ((byteRate shr 8) and 0xff).toByte(), ((byteRate shr 16) and 0xff).toByte(), ((byteRate shr 24) and 0xff).toByte(), 2, 0, 16, 0, 'd'.code.toByte(), 'a'.code.toByte(), 't'.code.toByte(), 'a'.code.toByte(), (dataSize and 0xff).toByte(), ((dataSize shr 8) and 0xff).toByte(), ((dataSize shr 16) and 0xff).toByte(), ((dataSize shr 24) and 0xff).toByte())
+        val wavFile = File(activity.cacheDir, "gemini_reply.wav")
+        FileOutputStream(wavFile).use { it.write(header); it.write(pcmBytes) }
+        val player = MediaPlayer(); activeMediaPlayer = player; isSpeaking.set(true); notifySpeaking(true); val latch = CountDownLatch(1)
+        try { player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()); player.setVolume(1.0f, 1.0f); player.setDataSource(wavFile.absolutePath); player.setOnCompletionListener { latch.countDown() }; player.setOnErrorListener { _, _, _ -> latch.countDown(); true }; player.prepare(); player.start(); latch.await() } catch (_: Exception) {} finally { try { if (player.isPlaying) player.stop() } catch (_: Exception) {}; try { player.release() } catch (_: Exception) {}; if (activeMediaPlayer === player) activeMediaPlayer = null; isSpeaking.set(false); notifySpeaking(false) }
     }
 
     private fun speakWithFallbackTts(text: String) {
@@ -537,6 +495,9 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         try {
             activeAudioTrack?.stop()
         } catch (_: Exception) {}
+        try { activeMediaPlayer?.stop() } catch (_: Exception) {}
+        try { activeMediaPlayer?.release() } catch (_: Exception) {}
+        activeMediaPlayer = null
         activity.runOnUiThread {
             fallbackTts?.stop()
         }
@@ -568,7 +529,9 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         try {
             activeAudioTrack?.stop()
         } catch (_: Exception) {}
-
+        try { activeMediaPlayer?.stop() } catch (_: Exception) {}
+        try { activeMediaPlayer?.release() } catch (_: Exception) {}
+                activeMediaPlayer = null
         activity.runOnUiThread {
             try {
                 speechRecognizer?.cancel()
