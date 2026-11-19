@@ -309,8 +309,8 @@ class PetHud : Disposable {
         }
 
         // Background Panels
-        skin.add("panel-bg", createDrawable(Color(0.08f, 0.12f, 0.18f, 0.65f)))
-        skin.add("subtitle-bg", createDrawable(Color(0.05f, 0.06f, 0.10f, 0.82f)))
+        skin.add("panel-bg", createDrawable(Color(0.08f, 0.12f, 0.18f, 0.65f)), Drawable::class.java)
+        skin.add("subtitle-bg", createDrawable(Color(0.05f, 0.06f, 0.10f, 0.82f)), Drawable::class.java)
 
         // Label Styles
         skin.add("default", Label.LabelStyle(font, Color.WHITE))
