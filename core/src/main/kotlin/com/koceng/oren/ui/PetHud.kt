@@ -21,7 +21,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 class PetHud : Disposable {
 
     val stage: Stage = Stage(ScreenViewport())
-    private val skin: Skin = createProceduralSkin()
+    private val uiSkin: Skin = createProceduralSkin()
 
     // Callbacks untuk dihubungkan ke PetScreen & Game Logic
     var onFeedClicked: (() -> Unit)? = null
@@ -65,23 +65,23 @@ class PetHud : Disposable {
         // ==========================================
         val topTable = Table().apply {
             pad(16f)
-            background = skin.getDrawable("panel-bg")
+            background = uiSkin.getDrawable("panel-bg")
         }
 
-        hungerLabel = Label("Lapar: 85%", skin)
-        hungerBar = ProgressBar(0f, 100f, 0.5f, false, skin, "hunger-bar").apply {
+        hungerLabel = Label("Lapar: 85%", uiSkin)
+        hungerBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "hunger-bar").apply {
             setValue(85f)
             setAnimateDuration(0.2f)
         }
 
-        energyLabel = Label("Energi: 90%", skin)
-        energyBar = ProgressBar(0f, 100f, 0.5f, false, skin, "energy-bar").apply {
+        energyLabel = Label("Energi: 90%", uiSkin)
+        energyBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "energy-bar").apply {
             setValue(90f)
             setAnimateDuration(0.2f)
         }
 
-        happinessLabel = Label("Bahagia: 80%", skin)
-        happinessBar = ProgressBar(0f, 100f, 0.5f, false, skin, "happiness-bar").apply {
+        happinessLabel = Label("Bahagia: 80%", uiSkin)
+        happinessBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "happiness-bar").apply {
             setValue(80f)
             setAnimateDuration(0.2f)
         }
@@ -106,11 +106,11 @@ class PetHud : Disposable {
         rootTable.add().expand().row() // Spacer fleksibel
 
         subtitleBox = Table().apply {
-            background = skin.getDrawable("subtitle-bg")
+            background = uiSkin.getDrawable("subtitle-bg")
             pad(12f, 20f, 12f, 20f)
         }
 
-        subtitleLabel = Label("Meong! Halo, aku Koceng Oren!", skin, "subtitle-text").apply {
+        subtitleLabel = Label("Meong! Halo, aku Koceng Oren!", uiSkin, "subtitle-text").apply {
             setWrap(true)
             setAlignment(com.badlogic.gdx.utils.Align.center)
         }
@@ -128,7 +128,7 @@ class PetHud : Disposable {
         // Baris 1: Tombol Kebutuhan (Makan, Tidur, Main)
         val actionRow = Table()
 
-        feedBtn = TextButton("Beri Makan", skin).apply {
+        feedBtn = TextButton("Beri Makan", uiSkin).apply {
             addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
                     onFeedClicked?.invoke()
@@ -136,7 +136,7 @@ class PetHud : Disposable {
             })
         }
 
-        sleepBtn = TextButton("Tidur", skin).apply {
+        sleepBtn = TextButton("Tidur", uiSkin).apply {
             addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
                     onSleepClicked?.invoke()
@@ -144,7 +144,7 @@ class PetHud : Disposable {
             })
         }
 
-        playBtn = TextButton("Ajak Main", skin).apply {
+        playBtn = TextButton("Ajak Main", uiSkin).apply {
             addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
                     onPlayClicked?.invoke()
@@ -163,7 +163,7 @@ class PetHud : Disposable {
             padTop(10f)
         }
 
-        modeToggleBtn = TextButton("Mode: Tiru Suara", skin, "mode-btn").apply {
+        modeToggleBtn = TextButton("Mode: Tiru Suara", uiSkin, "mode-btn").apply {
             addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
                     onModeToggleClicked?.invoke()
@@ -171,7 +171,7 @@ class PetHud : Disposable {
             })
         }
 
-        talkBtn = TextButton("Bicara AI", skin, "talk-btn").apply {
+        talkBtn = TextButton("Bicara AI", uiSkin, "talk-btn").apply {
             isVisible = false // Awalnya disembunyikan sampai mode AI dipilih
             addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -180,7 +180,7 @@ class PetHud : Disposable {
             })
         }
 
-        resetChatBtn = TextButton("Reset", skin, "reset-btn").apply {
+        resetChatBtn = TextButton("Reset", uiSkin, "reset-btn").apply {
             isVisible = false
             addListener(object : ClickListener() {
                 override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -279,7 +279,7 @@ class PetHud : Disposable {
 
     override fun dispose() {
         stage.dispose()
-        skin.dispose()
+        uiSkin.dispose()
     }
 
     // ========================================================
