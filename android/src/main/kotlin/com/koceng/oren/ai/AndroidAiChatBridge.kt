@@ -406,10 +406,9 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                 doOutput = true
             }
 
-            val ttsPrompt = "Ucapkan kalimat berikut dalam bahasa Indonesia yang sangat alami, ekspresif, santai, ketus, dan agak nyolot:\n$spokenText"
             val payload = JSONObject().apply {
                 put("contents", JSONArray().put(JSONObject().apply {
-                    put("parts", JSONArray().put(JSONObject().put("text", ttsPrompt)))
+                    put("parts", JSONArray().put(JSONObject().put("text", spokenText)))
                 }))
                 put("generationConfig", JSONObject().apply {
                     put("responseModalities", JSONArray().put("AUDIO"))
@@ -543,7 +542,24 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         }
         notifySpeaking(false)
     }
-
+    override fun speakText(text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        stopPlaybackOnly()
+        val apiKey = BuildConfig.GEMINI_API_KEY.trim()
+        val spokenText = prepareSpokenText(clean)
+        if (apiKey.isBlank()) {
+            speakWithFallbackTts(spokenText)
+            return
+        }
+        Thread {
+            val playedWithGemini = speakWithGeminiNaturalVoice(apiKey, spokenText)
+            if (!playedWithGemini) {
+                speakWithFallbackTts(spokenText)
+            }
+        }.start()
+    }
+    
     override fun stopAll() {
         isListening.set(false)
         isThinking.set(false)
