@@ -46,7 +46,10 @@ class PetHud : Disposable {
     var onHomeworkToggleClicked: (() -> Unit)? = null
     var onTypeClicked: (() -> Unit)? = null
     var onResetChatClicked: (() -> Unit)? = null
-
+    var onSettingsClicked: (() -> Unit)? = null
+        var onHistoryClicked: (() -> Unit)? = null
+    var onCopyClicked: (() -> Unit)? = null
+    var onPhotoHomeworkClicked: (() -> Unit)? = null
     // Top Status Badge
     private val statusTextLabel: Label
 
@@ -129,7 +132,9 @@ class PetHud : Disposable {
             Color(0.76f, 0.16f, 0.18f, 1f),
             IconType.RESET
         )
-
+        val photoTex = createGlossyDiscTexture(Color(0.16f, 0.86f, 0.84f, 1f), Color(0.04f, 0.56f, 0.58f, 1f), IconType.CAMERA)
+                val historyTex = createGlossyDiscTexture(Color(0.20f, 0.78f, 0.88f, 1f), Color(0.06f, 0.48f, 0.64f, 1f), IconType.HISTORY)
+                        val settingsTex = createGlossyDiscTexture(Color(0.36f, 0.46f, 0.96f, 1f), Color(0.18f, 0.24f, 0.72f, 1f), IconType.SETTINGS)
         val rootTable = Table().apply {
             setFillParent(true)
             pad(14f, 16f, 18f, 16f)
@@ -180,11 +185,12 @@ class PetHud : Disposable {
             add(resetBtn).size(58f).row()
             add(resetLabelPill).padTop(3f)
         }
-
+        val historyBtn = CartoonCircleButton(outerRingTex, historyTex).apply { onClick = { onHistoryClicked?.invoke() } }; val historyLabelPill = Table().apply { background = labelPillBg; pad(2f, 8f, 4f, 8f); add(Label("Riwayat", Label.LabelStyle(smallFont, Color.WHITE))) }; val historyCol = Table().apply { add(historyBtn).size(48f).row(); add(historyLabelPill).padTop(3f) }; val settingsBtn = CartoonCircleButton(outerRingTex, settingsTex).apply { onClick = { onSettingsClicked?.invoke() } }; val settingsLabelPill = Table().apply { background = labelPillBg; pad(2f, 8f, 4f, 8f); add(Label("Atur", Label.LabelStyle(smallFont, Color.WHITE))) }; val settingsCol = Table().apply { add(settingsBtn).size(48f).row(); add(settingsLabelPill).padTop(3f) }; resetCol.clearChildren(); resetCol.add(resetBtn).size(48f).row(); resetCol.add(resetLabelPill).padTop(3f); val topRightRow = Table().apply { add(historyCol).padRight(6f); add(settingsCol).padRight(6f); add(resetCol) }
         topBar.add(headerPill).left().top()
         topBar.add().expandX()
         topBar.add(resetCol).right().top()
-
+        topBar.clearChildren(); topBar.add(headerPill).width(235f).left().top(); topBar.add().expandX(); topBar.add(topRightRow).right().top()
+        
         rootTable.add(topBar).expandX().fillX().top().row()
 
         // ==========================================
@@ -234,7 +240,7 @@ class PetHud : Disposable {
             pad(24f, 16f, 14f, 16f)
             add(chatScrollPane).width(406f).maxHeight(124f).minHeight(60f)
         }
-
+        val copyPill = Table().apply { background = labelPillBg; pad(3f, 12f, 5f, 12f); add(Label("Salin", Label.LabelStyle(smallFont, Color.WHITE))); touchable = com.badlogic.gdx.scenes.scene2d.Touchable.enabled; addListener(object : com.badlogic.gdx.scenes.scene2d.utils.ClickListener() { override fun clicked(event: com.badlogic.gdx.scenes.scene2d.InputEvent?, x: Float, y: Float) { onCopyClicked?.invoke() } }) }; speechBubbleContainer.row(); speechBubbleContainer.add(copyPill).right().padTop(4f)
         rootTable.add(speechBubbleContainer).center().padBottom(12f).row()
 
         // ==========================================
@@ -278,7 +284,7 @@ class PetHud : Disposable {
         bottomDock.add(leftCol).expandX().bottom()
         bottomDock.add(centerCol).expandX().bottom()
         bottomDock.add(rightCol).expandX().bottom()
-
+        val photoBtn = CartoonCircleButton(outerRingTex, photoTex).apply { onClick = { onPhotoHomeworkClicked?.invoke() } }; val photoCol = Table().apply { add(photoBtn).size(72f).row(); add(wrapLabelPill(Label("Foto PR", pillLabelStyle))).padTop(4f) }; leftCol.clearChildren(); leftCol.add(homeworkBtn).size(72f).row(); leftCol.add(wrapLabelPill(homeworkLabel)).padTop(4f); centerCol.clearChildren(); centerCol.add(talkBtn).size(96f).row(); centerCol.add(wrapLabelPill(talkLabel)).padTop(4f); rightCol.clearChildren(); rightCol.add(typeBtn).size(72f).row(); rightCol.add(wrapLabelPill(Label("Ketik", pillLabelStyle))).padTop(4f); bottomDock.clearChildren(); bottomDock.add(leftCol).expandX().bottom(); bottomDock.add(photoCol).expandX().bottom(); bottomDock.add(centerCol).expandX().bottom(); bottomDock.add(rightCol).expandX().bottom()
         rootTable.add(bottomDock).expandX().fillX().bottom()
     }
 
@@ -418,7 +424,7 @@ class PetHud : Disposable {
         return registerTexture(pm)
     }
 
-    private enum class IconType { MIC, BOOK, CHAT, RESET, THINK, STOP }
+    private enum class IconType { MIC, BOOK, CHAT, RESET, THINK, STOP, CAMERA, HISTORY, SETTINGS }
 
     private fun createGlossyDiscTexture(
         topColor: Color,
@@ -511,7 +517,31 @@ class PetHud : Disposable {
                 pm.fillRectangle(ic, ic - 30, 30, 26)
                 pm.setColor(Color.WHITE)
                 pm.fillTriangle(ic + 4, ic - 30, ic + 25, ic - 16, ic + 4, ic - 3)
-            }
+            } 
+          IconType.CAMERA -> {
+pm.setColor(Color.WHITE)
+pm.fillRectangle(ic - 28, ic - 16, 56, 38)
+pm.fillRectangle(ic - 14, ic - 26, 28, 12)
+pm.setColor(topColor.cpy().lerp(bottomColor, 0.5f))
+pm.fillCircle(ic, ic + 3, 14)
+pm.setColor(Color.WHITE)
+pm.fillCircle(ic, ic + 3, 7)
+          }
+          IconType.HISTORY -> {
+    pm.setColor(Color.WHITE)
+    pm.fillRectangle(ic - 24, ic - 18, 48, 8)
+    pm.fillRectangle(ic - 24, ic - 4, 48, 8)
+    pm.fillRectangle(ic - 24, ic + 10, 48, 8)
+}
+IconType.SETTINGS -> {
+    pm.setColor(Color.WHITE)
+    pm.fillCircle(ic, ic, 22)
+    pm.fillRectangle(ic - 6, ic - 30, 12, 60)
+    pm.fillRectangle(ic - 30, ic - 6, 60, 12)
+    pm.setColor(topColor.cpy().lerp(bottomColor, 0.5f))
+    pm.fillCircle(ic, ic, 10)
+}
+                
         }
 
         return registerTexture(pm)
