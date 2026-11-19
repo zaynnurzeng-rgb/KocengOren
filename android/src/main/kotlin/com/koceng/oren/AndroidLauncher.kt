@@ -1,6 +1,7 @@
 package com.koceng.oren
 
 import android.os.Bundle
+import android.content.Intent
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import com.koceng.oren.ai.AndroidAiChatBridge
@@ -49,5 +50,13 @@ class AndroidLauncher : AndroidApplication() {
         super.onDestroy()
         voiceBridge.stopListening()
         aiChatBridge.stopAll()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (::aiChatBridge.isInitialized) {
+            aiChatBridge.onActivityResult(requestCode, resultCode, data)
+        }
     }
 }
