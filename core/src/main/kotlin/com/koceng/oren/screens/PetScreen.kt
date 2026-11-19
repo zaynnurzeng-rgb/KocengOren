@@ -3,8 +3,6 @@ package com.koceng.oren.screens
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.InputMultiplexer
 import com.badlogic.gdx.ScreenAdapter
-import com.badlogic.gdx.audio.Sound
-import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.PerspectiveCamera
@@ -13,17 +11,15 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
-import com.badlogic.gdx.utils.Timer
 import com.koceng.oren.ai.AiChatBridge
+import com.koceng.oren.ai.ChatMode
 import com.koceng.oren.audio.ProceduralSfx
 import com.koceng.oren.audio.VoiceMimicBridge
-import com.koceng.oren.audio.VoiceMimicCallback
-import com.koceng.oren.audio.WavUtils
 import com.koceng.oren.character.HitZone
 import com.koceng.oren.character.PetCharacter
 import com.koceng.oren.character.PetState
-import com.koceng.oren.data.PetStateManager
 import com.koceng.oren.input.PetTouchController
+import com.koceng.oren.ui.HudAiState
 import com.koceng.oren.ui.PetHud
 import com.koceng.oren.ui.PetParticleOverlay
 import net.mgsx.gltf.scene3d.lights.DirectionalLightEx
@@ -32,7 +28,7 @@ import net.mgsx.gltf.scene3d.scene.SceneManager
 class PetScreen(
     private val voiceBridge: VoiceMimicBridge,
     private val aiChatBridge: AiChatBridge
-) : ScreenAdapter(), VoiceMimicCallback {
+) : ScreenAdapter() {
 
     // -- 3D Scene Components --
     private lateinit var camera: PerspectiveCamera
@@ -52,31 +48,13 @@ class PetScreen(
     private val targetCameraPos = Vector3(defaultCameraPos)
     private val tempVec3 = Vector3()
 
-    // Mode Pencahayaan Ruangan (Siang vs Malam / Lampu Tidur)
-    private var currentLightIntensity = 2.6f
-    private var targetLightIntensity = 2.6f
-    private var currentAmbient = 0.72f
-    private var targetAmbient = 0.72f
-    private val dayBackdropTint = Color(1f, 1f, 1f, 1f)
-    private val nightBackdropTint = Color(0.28f, 0.34f, 0.54f, 1f)
-    private val currentBackdropTint = Color(dayBackdropTint)
-
-    // --- Virtual Pet State Manager & HUD ---
-    private val petStateManager = PetStateManager()
+    // --- HUD & Efek Audio/Partikel ---
     private lateinit var petHud: PetHud
-
-    // --- Efek Audio & Partikel Prosedural ---
     private lateinit var sfx: ProceduralSfx
     private lateinit var particleOverlay: PetParticleOverlay
-    private var zzzTimer = 0f
 
-    // Mode: Tiru Suara (false) vs Ngobrol AI (true)
-    private var isAiMode: Boolean = false
-
-    // --- Audio Mimic ---
-    private var currentSound: Sound? = null
-    private val chipmunkPitch = 1.42f
-
+    // Mode AI: Obrolan Santai vs PR Sekolah
+    private var isHomeworkMode: Boolean = false
     override fun show() {
         // ==========================================
         // 1. Inisialisasi Kamera 3D
@@ -98,10 +76,10 @@ class PetScreen(
         sunLight = DirectionalLightEx().apply {
             direction.set(1f, -2.5f, 1.5f).nor()
             color.set(Color.WHITE)
-            intensity = currentLightIntensity
+            intensity = 2.6f
         }
         sceneManager.environment.add(sunLight)
-        sceneManager.setAmbientLight(currentAmbient)
+        sceneManager.setAmbientLight(0.72f)
 
         // ==========================================
         // 3. Inisialisasi Latar Belakang Ruangan Kartun
@@ -122,7 +100,7 @@ class PetScreen(
         particleOverlay = PetParticleOverlay()
 
         // ==========================================
-        // 5. Memuat Model GLB Karakter
+        // 5. Memuat Model GLB Karakter & Interaksi Sentuh
         // ==========================================
         pet = PetCharacter("models/cartoon_cat.glb")
         sceneManager.addScene(pet.scene)
@@ -133,40 +111,26 @@ class PetScreen(
                     sfx.playPoke()
                     val headPos = getHeadScreenPos()
                     particleOverlay.spawnStars(headPos.x, headPos.y)
-                    petStateManager.play(5f)
-                    petHud.showSubtitle("Aduh! Kepalaku pusing, meong!", 2f)
+                    petHud.showReply("Woy! Jangan colek-colek kepala gue, nggak sopan banget sih lu!")
                 }
                 HitZone.BELLY -> {
                     sfx.playPurr()
                     val bellyPos = getBellyScreenPos()
                     particleOverlay.spawnHearts(bellyPos.x, bellyPos.y)
-                    petStateManager.play(10f)
-                    petHud.showSubtitle("Geli banget perutku, purr... meong!", 2f)
+                    petHud.showReply("Apaan sih pegang-pegang perut gue? Geli woy, minggir sana!")
                 }
                 HitZone.NONE -> {}
             }
         }
 
         // ==========================================
-        // 6. Inisialisasi PetHud (Scene2D)
+        // 6. Inisialisasi PetHud (AI Pet UI)
         // ==========================================
         petHud = PetHud()
         setupHudCallbacks()
 
-        petHud.updateStatus(
-            petStateManager.hunger,
-            petStateManager.energy,
-            petStateManager.happiness,
-            petStateManager.isSleeping
-        )
-        if (petStateManager.isSleeping) {
-            pet.playSleeping()
-            targetLightIntensity = 0.40f
-            targetAmbient = 0.18f
-        }
-
         // ==========================================
-        // 7. InputMultiplexer
+        // 7. InputMultiplexer (UI diprioritaskan pertama)
         // ==========================================
         val multiplexer = InputMultiplexer()
         multiplexer.addProcessor(petHud.stage)
@@ -174,18 +138,12 @@ class PetScreen(
         Gdx.input.inputProcessor = multiplexer
 
         // ==========================================
-        // 8. Hubungkan Audio Mimic Bridge
+        // 8. Minta Izin Mikrofon & Hubungkan Gemini AI Bridge
         // ==========================================
-        voiceBridge.setCallback(this)
-        voiceBridge.checkAndRequestPermissions {
-            if (!isAiMode) {
-                voiceBridge.startListening()
-            }
-        }
+        voiceBridge.stopListening()
+        voiceBridge.checkAndRequestPermissions { }
 
-        // ==========================================
-        // 9. Hubungkan AI Chat Bridge
-        // ==========================================
+        aiChatBridge.setChatMode(ChatMode.CHAT)
         setupAiChatCallbacks()
     }
 
@@ -200,142 +158,89 @@ class PetScreen(
     }
 
     private fun setupHudCallbacks() {
-        petHud.onFeedClicked = {
-            sfx.playButton()
-            sfx.playEat()
-            val bellyPos = getBellyScreenPos()
-            particleOverlay.spawnCrumbs(bellyPos.x, bellyPos.y + 40f)
-            petStateManager.feed(25f)
-            pet.playEating()
-            petHud.showSubtitle("Nyam nyam! Enak banget makannya!", 2.5f)
-        }
-
-        petHud.onSleepClicked = {
-            sfx.playButton()
-            petStateManager.sleep()
-            if (petStateManager.isSleeping) {
-                pet.playSleeping()
-                targetLightIntensity = 0.40f
-                targetAmbient = 0.18f
-                petHud.showSubtitle("Lampu dimatikan... Zzz... Koceng Oren tidur pulas.", 2.5f)
-            } else {
-                pet.wakeUp()
-                targetLightIntensity = 2.6f
-                targetAmbient = 0.72f
-                petHud.showSubtitle("Lampu dinyalakan! Hoam... Koceng Oren bangun!", 2.5f)
-            }
-        }
-
-        petHud.onPlayClicked = {
-            sfx.playButton()
-            sfx.playPurr()
-            val bellyPos = getBellyScreenPos()
-            particleOverlay.spawnHearts(bellyPos.x, bellyPos.y)
-            petStateManager.play(20f)
-            pet.playLaughing()
-            petHud.showSubtitle("Meong! Asyik banget diajak main!", 2.5f)
-        }
-
-        petHud.onModeToggleClicked = {
-            sfx.playButton()
-            isAiMode = !isAiMode
-            petHud.setMode(isAiMode)
-
-            if (isAiMode) {
-                voiceBridge.stopListening()
-                aiChatBridge.stopAll()
-            } else {
-                aiChatBridge.stopAll()
-                voiceBridge.startListening()
-            }
-        }
-
         petHud.onTalkClicked = {
             sfx.playButton()
-            if (isAiMode) {
-                if (aiChatBridge.isBusy()) {
-                    aiChatBridge.stopAll()
-                } else {
-                    aiChatBridge.startListening()
-                }
+            if (aiChatBridge.isBusy()) {
+                aiChatBridge.stopAll()
+                petHud.setStatusState(HudAiState.IDLE)
+                pet.playIdle()
+            } else {
+                aiChatBridge.startListening()
             }
+        }
+
+        petHud.onHomeworkToggleClicked = {
+            sfx.playButton()
+            isHomeworkMode = !isHomeworkMode
+            aiChatBridge.setChatMode(if (isHomeworkMode) ChatMode.HOMEWORK else ChatMode.CHAT)
+            petHud.setHomeworkMode(isHomeworkMode)
+            if (isHomeworkMode) {
+                petHud.showReply("Mode PR Sekolah aktif! Ya udah, sebutin atau pencet Ketik buat kasih soal PR lu sekarang.")
+            } else {
+                petHud.showReply("Mode obrolan santai balik lagi. Mau ngomong apaan lu?")
+            }
+        }
+
+        petHud.onTypeClicked = {
+            sfx.playButton()
+            aiChatBridge.openTextInputDialog(isHomeworkMode)
         }
 
         petHud.onResetChatClicked = {
             sfx.playButton()
+            aiChatBridge.stopAll()
             aiChatBridge.resetChatHistory()
-            petHud.showSubtitle("Ingatan obrolan di-reset! Meong siap ngobrol topik baru.", 3f)
+            petHud.setStatusState(HudAiState.IDLE)
+            petHud.clearChat()
+            pet.playIdle()
         }
     }
 
     private fun setupAiChatCallbacks() {
         aiChatBridge.onListeningStateChanged = { isListening ->
-            petHud.setTalkButtonState(isListening)
             if (isListening) {
+                petHud.setStatusState(HudAiState.LISTENING)
+                pet.playListening()
+            } else if (!aiChatBridge.isBusy()) {
+                petHud.setStatusState(HudAiState.IDLE)
+                pet.playIdle()
+            }
+        }
+
+        aiChatBridge.onThinkingStateChanged = { isThinking ->
+            if (isThinking) {
+                petHud.setStatusState(HudAiState.THINKING)
                 pet.playListening()
             }
         }
 
+        aiChatBridge.onUserMessage = { msg ->
+            petHud.showUserMessage(msg)
+        }
+
         aiChatBridge.onReplyText = { reply ->
-            petHud.showSubtitle(reply, 0f)
+            petHud.showReply(reply)
         }
 
         aiChatBridge.onSpeakingStateChanged = { isSpeaking ->
             if (isSpeaking) {
+                petHud.setStatusState(HudAiState.SPEAKING)
                 pet.playTalking()
             } else {
-                if (pet.currentState != PetState.SLEEPING) {
-                    pet.playIdle()
-                }
+                petHud.setStatusState(HudAiState.IDLE)
+                pet.playIdle()
             }
         }
 
         aiChatBridge.onError = { error ->
-            petHud.showSubtitle(error, 4f)
-            if (pet.currentState != PetState.SLEEPING) {
-                pet.playIdle()
-            }
+            petHud.setStatusState(HudAiState.IDLE)
+            petHud.showReply(error)
+            pet.playIdle()
         }
     }
 
     override fun render(delta: Float) {
-        // 1. Update logika kebutuhan virtual pet
-        petStateManager.update(delta)
-        petHud.updateStatus(
-            petStateManager.hunger,
-            petStateManager.energy,
-            petStateManager.happiness,
-            petStateManager.isSleeping
-        )
-        aiChatBridge.updatePetStatus(
-            petStateManager.hunger,
-            petStateManager.energy,
-            petStateManager.happiness
-        )
-
-        // 2. Partikel Zzz berkala saat kucing tidur
-        if (petStateManager.isSleeping) {
-            zzzTimer += delta
-            if (zzzTimer >= 1.25f) {
-                zzzTimer = 0f
-                val headPos = getHeadScreenPos()
-                particleOverlay.spawnZzz(headPos.x, headPos.y + 20f)
-            }
-        } else {
-            zzzTimer = 0f
-        }
-
-        // 3. Efek Transisi Pencahayaan Halus (Siang vs Malam / Lampu Tidur)
-        val lightLerp = delta * 3.5f
-        currentLightIntensity = MathUtils.lerp(currentLightIntensity, targetLightIntensity, lightLerp)
-        currentAmbient = MathUtils.lerp(currentAmbient, targetAmbient, lightLerp)
-        sunLight.intensity = currentLightIntensity
-        sceneManager.setAmbientLight(currentAmbient)
-
-        val targetTint = if (petStateManager.isSleeping) nightBackdropTint else dayBackdropTint
-        currentBackdropTint.lerp(targetTint, lightLerp)
-
-        // 4. Efek Kamera Subtle Zoom saat Berbicara atau Bereaksi
+        // 1. Efek Kamera Subtle Zoom saat Mendengar / Berbicara / Bereaksi
         val shouldZoom = pet.currentState == PetState.TALKING ||
                        pet.currentState == PetState.DIZZY ||
                        pet.currentState == PetState.LAUGHING ||
@@ -345,19 +250,19 @@ class PetScreen(
         camera.lookAt(0f, cameraLookAtY, 0f)
         camera.update()
 
-        // 5. Update animasi karakter
+        // 2. Update animasi karakter
         pet.update(delta)
 
-        // 6. Clear buffer warna & kedalaman
+        // 3. Clear buffer warna & kedalaman
         val w = Gdx.graphics.width.toFloat()
         val h = Gdx.graphics.height.toFloat()
         Gdx.gl.glViewport(0, 0, Gdx.graphics.width, Gdx.graphics.height)
         Gdx.gl.glClearColor(0.35f, 0.65f, 0.85f, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
 
-        // 7. RENDER LAYER 0: Latar Belakang Ruangan Kartun 2D
+        // 4. RENDER LAYER 0: Latar Belakang Ruangan Kartun 2D
         backdropBatch.projectionMatrix.setToOrtho2D(0f, 0f, w, h)
-        backdropBatch.color = currentBackdropTint
+        backdropBatch.color = Color.WHITE
         backdropBatch.begin()
         backdropBatch.draw(roomBackdropTexture, 0f, 0f, w, h)
         backdropBatch.end()
@@ -365,14 +270,14 @@ class PetScreen(
         // Reset depth buffer agar model 3D kucing selalu tampil di atas backdrop
         Gdx.gl.glClear(GL20.GL_DEPTH_BUFFER_BIT)
 
-        // 8. RENDER LAYER 1: 3D Scene PBR (Karakter Kucing)
+        // 5. RENDER LAYER 1: 3D Scene PBR (Karakter Kucing)
         sceneManager.update(delta)
         sceneManager.render()
 
-        // 9. RENDER LAYER 2: Efek Partikel Visual Prosedural
+        // 6. RENDER LAYER 2: Efek Partikel Visual Prosedural
         particleOverlay.render(delta, w, h)
 
-        // 10. RENDER LAYER 3: 2D Scene2D UI (HUD, Subtitle, & Tombol)
+        // 7. RENDER LAYER 3: 2D Scene2D UI (HUD AI Pet)
         petHud.render(delta)
     }
 
@@ -380,7 +285,6 @@ class PetScreen(
         sceneManager.updateViewport(width.toFloat(), height.toFloat())
         petHud.resize(width, height)
     }
-
     // --- Generator Latar Belakang Ruangan Kartun Hangat (Tanpa Aset Eksternal) ---
     private fun createCartoonRoomTexture(): Texture {
         val w = 540
@@ -416,17 +320,16 @@ class PetScreen(
         // 1. Langit-langit krem hangat
         fillVGrad(0, 0, w, ceilingH, Color(0.95f, 0.90f, 0.82f, 1f), Color(0.89f, 0.82f, 0.72f, 1f))
 
-        // 2. Dinding biru kartun (kiri sedikit lebih teduh, kanan lebih cerah)
+        // 2. Dinding biru kartun
         fillVGrad(0, ceilingH, cornerX, wallBottomY - ceilingH, Color(0.36f, 0.69f, 0.89f, 1f), Color(0.45f, 0.77f, 0.93f, 1f))
         fillVGrad(cornerX, ceilingH, w - cornerX, wallBottomY - ceilingH, Color(0.44f, 0.75f, 0.93f, 1f), Color(0.55f, 0.83f, 0.96f, 1f))
 
-        // Garis sudut dinding & lis plafon
         pm.setColor(0.28f, 0.56f, 0.76f, 0.45f)
         pm.fillRectangle(cornerX - 2, ceilingH, 4, wallBottomY - ceilingH)
         pm.setColor(0.84f, 0.76f, 0.66f, 1f)
         pm.fillRectangle(0, ceilingH - 4, w, 7)
 
-        // 3. Jendela kiri (langit cerah, awan, pohon hijau)
+        // 3. Jendela kiri
         val winX = 52
         val winY = ceilingH + 54
         val winW = 156
@@ -435,21 +338,17 @@ class PetScreen(
         pm.fillRectangle(winX + 6, winY + 8, winW, winH)
         fillRoundRect(winX - 8, winY - 8, winW + 16, winH + 16, 10, Color(0.96f, 0.95f, 0.92f, 1f))
         fillVGrad(winX + 4, winY + 4, winW - 8, winH - 8, Color(0.48f, 0.82f, 0.98f, 1f), Color(0.82f, 0.95f, 1f, 1f))
-        // Awan putih
         pm.setColor(1f, 1f, 1f, 0.92f)
         pm.fillCircle(winX + 46, winY + 56, 18)
         pm.fillCircle(winX + 66, winY + 50, 22)
         pm.fillCircle(winX + 88, winY + 58, 16)
-        // Pohon hijau di luar jendela
         pm.setColor(0.45f, 0.78f, 0.34f, 1f)
         pm.fillCircle(winX + 36, winY + winH - 28, 36)
         pm.fillCircle(winX + 90, winY + winH - 18, 42)
         pm.fillCircle(winX + 135, winY + winH - 34, 30)
-        // Palang bingkai jendela
         pm.setColor(0.96f, 0.95f, 0.92f, 1f)
         pm.fillRectangle(winX + winW / 2 - 5, winY, 10, winH)
         pm.fillRectangle(winX, winY + winH / 2 - 5, winW, 10)
-        // Batang gorden kayu
         fillRoundRect(winX - 18, winY - 26, winW + 36, 10, 5, Color(0.76f, 0.52f, 0.28f, 1f))
 
         // 4. Jendela kanan
@@ -466,7 +365,7 @@ class PetScreen(
         pm.fillRectangle(rWinX + 58, rWinY, 10, rWinH)
         pm.fillRectangle(rWinX, rWinY + rWinH / 2 - 5, rWinW, 10)
 
-        // 5. Bingkai foto lucu di dinding belakang
+        // 5. Bingkai foto di dinding belakang
         fun drawFrame(fx: Int, fy: Int, fw: Int, fh: Int, bg: Color, accent: Color) {
             pm.setColor(0.20f, 0.42f, 0.60f, 0.30f)
             pm.fillRectangle(fx + 4, fy + 5, fw, fh)
@@ -480,13 +379,13 @@ class PetScreen(
         drawFrame(cornerX + 110, ceilingH + 74, 58, 66, Color(0.95f, 0.97f, 0.92f, 1f), Color(0.65f, 0.52f, 0.44f, 1f))
         drawFrame(cornerX + 52, ceilingH + 154, 56, 56, Color(0.92f, 0.95f, 0.99f, 1f), Color(0.94f, 0.54f, 0.24f, 1f))
 
-        // 6. Lis kayu bawah dinding (baseboard)
+        // 6. Baseboard
         pm.setColor(0.94f, 0.93f, 0.90f, 1f)
         pm.fillRectangle(0, wallBottomY - 16, w, 16)
         pm.setColor(0.78f, 0.76f, 0.72f, 1f)
         pm.fillRectangle(0, wallBottomY - 16, w, 2)
 
-        // 7. Lantai kayu hangat + garis papan
+        // 7. Lantai kayu
         fillVGrad(0, wallBottomY, w, h - wallBottomY, Color(0.89f, 0.63f, 0.36f, 1f), Color(0.76f, 0.48f, 0.24f, 1f))
         pm.setColor(0.64f, 0.39f, 0.18f, 0.35f)
         for (i in 1..6) {
@@ -503,7 +402,6 @@ class PetScreen(
         pm.fillRectangle(8, cabY + 72, 84, 3)
         pm.fillCircle(50, cabY + 46, 5)
         pm.fillCircle(50, cabY + 94, 5)
-        // Pot & daun hijau
         fillRoundRect(22, cabY - 46, 46, 42, 8, Color(0.84f, 0.42f, 0.22f, 1f))
         fillRoundRect(18, cabY - 52, 54, 12, 5, Color(0.90f, 0.48f, 0.26f, 1f))
         pm.setColor(0.32f, 0.68f, 0.25f, 1f)
@@ -512,27 +410,24 @@ class PetScreen(
         pm.setColor(0.44f, 0.78f, 0.32f, 1f)
         pm.fillCircle(45, cabY - 94, 24)
 
-        // 9. Sofa krem & bantal warna-warni di kanan
+        // 9. Sofa krem & bantal di kanan
         val sofaX = w - 165
         val sofaY = wallBottomY - 82
         fillRoundRect(sofaX, sofaY, 185, 118, 22, Color(0.90f, 0.81f, 0.70f, 1f))
         fillRoundRect(sofaX - 12, sofaY + 42, 42, 76, 18, Color(0.86f, 0.76f, 0.64f, 1f))
         fillRoundRect(sofaX + 18, sofaY + 56, 155, 56, 16, Color(0.94f, 0.86f, 0.76f, 1f))
-        // Bantal oranye & biru
         fillRoundRect(sofaX + 34, sofaY + 18, 52, 48, 12, Color(0.97f, 0.66f, 0.20f, 1f))
         fillRoundRect(sofaX + 102, sofaY + 24, 52, 44, 12, Color(0.30f, 0.72f, 0.92f, 1f))
 
-        // 10. Karpet merah hangat di tengah ruangan (perspektif trapesium)
+        // 10. Karpet merah
         val rugTopY = wallBottomY + 26
         val rugBotY = (h * 0.89f).toInt()
         for (ry in rugTopY..rugBotY) {
             val t = (ry - rugTopY).toFloat() / (rugBotY - rugTopY).coerceAtLeast(1)
             val halfW = MathUtils.lerp(w * 0.34f, w * 0.56f, t).toInt()
             val rx = w / 2 - halfW
-            // Bayangan tepi karpet
             pm.setColor(0.45f, 0.20f, 0.10f, 0.35f)
             pm.fillRectangle(rx - 4, ry + 4, halfW * 2 + 8, 2)
-            // Warna karpet merah gradien
             val rCol = MathUtils.lerp(0.84f, 0.74f, t)
             val gCol = MathUtils.lerp(0.18f, 0.13f, t)
             val bCol = MathUtils.lerp(0.18f, 0.14f, t)
@@ -558,83 +453,20 @@ class PetScreen(
         return tex
     }
 
-    // --- Callback Voice Mimic (Mode Tiru Suara) ---
-
-    override fun onSpeechStarted() {
-        if (isAiMode || pet.currentState == PetState.SLEEPING) return
-
-        Gdx.app.postRunnable {
-            pet.playListening()
-            petHud.showSubtitle("Mendengarkan...", 0f)
-        }
-    }
-
-    override fun onSpeechCaptured(pcmData: ByteArray, sampleRate: Int, durationSeconds: Float) {
-        if (isAiMode || pet.currentState == PetState.SLEEPING) {
-            voiceBridge.startListening()
-            return
-        }
-
-        Gdx.app.postRunnable {
-            try {
-                val tempWavFile: FileHandle = Gdx.files.local("mimic_cache.wav")
-                val wavBytes = WavUtils.pcmToWav(pcmData, sampleRate)
-                tempWavFile.writeBytes(wavBytes, false)
-
-                currentSound?.stop()
-                currentSound?.dispose()
-
-                currentSound = Gdx.audio.newSound(tempWavFile)
-                currentSound?.play(1.0f, chipmunkPitch, 0.0f)
-
-                pet.playTalking()
-                petHud.showSubtitle("Menirukan suara!", durationSeconds / chipmunkPitch)
-
-                val actualDuration = durationSeconds / chipmunkPitch
-                Timer.schedule(object : Timer.Task() {
-                    override fun run() {
-                        if (pet.currentState != PetState.SLEEPING) {
-                            pet.playIdle()
-                        }
-                        if (!isAiMode) {
-                            voiceBridge.startListening()
-                        }
-                    }
-                }, actualDuration)
-            } catch (e: Exception) {
-                pet.playIdle()
-                if (!isAiMode) {
-                    voiceBridge.startListening()
-                }
-            }
-        }
-    }
-
-    override fun onError(errorMessage: String) {
-        if (!isAiMode) {
-            petHud.showSubtitle(errorMessage, 3f)
-        }
-    }
-
     override fun pause() {
-        petStateManager.save()
         voiceBridge.stopListening()
         aiChatBridge.stopAll()
     }
 
     override fun resume() {
-        if (!isAiMode) {
-            voiceBridge.startListening()
-        }
+        // AI Pet menunggu tombol Bicara / Ketik agar tidak bentrok mikrofon
     }
 
     override fun dispose() {
-        petStateManager.save()
         voiceBridge.stopListening()
         voiceBridge.setCallback(null)
         aiChatBridge.stopAll()
 
-        currentSound?.dispose()
         sfx.dispose()
         particleOverlay.dispose()
         pet.dispose()
