@@ -163,7 +163,7 @@ class PetHud : Disposable {
         }
         val resetCol = Table().apply {
             add(resetBtn).size(56f).row()
-            add(Label("Reset", smallStyle)).padTop(2f)
+            add(Label("Reset", Label.LabelStyle(smallFont, Color(0.20f, 0.22f, 0.28f, 1f)))).padTop(2f)
         }
 
         topBar.add(headerPill).left().top()
@@ -215,7 +215,7 @@ class PetHud : Disposable {
         val chatBox = Table().apply {
             background = chatCardBg
             pad(10f, 12f, 10f, 12f)
-            add(chatScrollPane).width(416f).maxHeight(168f).minHeight(78f)
+            add(chatScrollPane).width(416f).maxHeight(132f).minHeight(64f)
         }
 
         rootTable.add(chatBox).center().padBottom(14f).row()
@@ -504,28 +504,40 @@ class PetHud : Disposable {
         borderWidth: Int
     ): Drawable {
         val pm = Pixmap(width, height, Pixmap.Format.RGBA8888)
-        pm.blending = Pixmap.Blending.SourceOver
+       pm.blending = Pixmap.Blending.None
 
-        fun drawRounded(x: Int, y: Int, w: Int, h: Int, r: Int, col: Color) {
-            val rad = r.coerceAtMost(minOf(w, h) / 2)
-            pm.setColor(col)
-            pm.fillRectangle(x + rad, y, w - 2 * rad, h)
-            pm.fillRectangle(x, y + rad, w, h - 2 * rad)
-            pm.fillCircle(x + rad, y + rad, rad)
-            pm.fillCircle(x + w - rad - 1, y + rad, rad)
-            pm.fillCircle(x + rad, y + h - rad - 1, rad)
-            pm.fillCircle(x + w - rad - 1, y + h - rad - 1, rad)
-        }
+val halfW = width * 0.5f
+val halfH = height * 0.5f
+val r = radius.toFloat().coerceAtMost(minOf(halfW, halfH) - 1f)
+val bw = borderWidth.toFloat()
 
-        drawRounded(0, 0, width, height, radius, borderColor)
-        drawRounded(
-            borderWidth,
-            borderWidth,
-            width - borderWidth * 2,
-            height - borderWidth * 2,
-            (radius - borderWidth).coerceAtLeast(2),
-            fillColor
-        )
+        for (y in 0 until height) {
+           val py = kotlin.math.abs(y + 0.5f - halfH) - (halfH - r)
+for (x in 0 until width) {
+val px = kotlin.math.abs(x + 0.5f - halfW) - (halfW - r)
+val qx = px.coerceAtLeast(0f)
+val qy = py.coerceAtLeast(0f)
+val dist = sqrt(qx * qx + qy * qy) + minOf(maxOf(px, py), 0f) - r
+
+if (dist <= 0.5f) {
+val edgeAlpha = (0.5f - dist).coerceIn(0f, 1f)
+if (dist >= -bw) {
+val bFactor = ((dist + bw) / 1.0f).coerceIn(0f, 1f)
+val cr = MathUtils.lerp(fillColor.r, borderColor.r, bFactor)
+val cg = MathUtils.lerp(fillColor.g, borderColor.g, bFactor)
+val cb = MathUtils.lerp(fillColor.b, borderColor.b, bFactor)
+val ca = MathUtils.lerp(fillColor.a, borderColor.a, bFactor) * edgeAlpha
+pm.drawPixel(x, y, Color.rgba8888(cr, cg, cb, ca))
+} else {
+pm.drawPixel(
+x,
+y,
+Color.rgba8888(fillColor.r, fillColor.g, fillColor.b, fillColor.a * edgeAlpha)
+)
+}
+}
+}
+        } 
 
         return TextureRegionDrawable(TextureRegion(registerTexture(pm)))
     }
