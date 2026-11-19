@@ -3,6 +3,16 @@ package com.koceng.oren.ai
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.provider.MediaStore
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import java.io.ByteArrayOutputStream
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -42,6 +52,9 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         private const val PCM_SAMPLE_RATE = 24000
         private const val UTTERANCE_ID = "koceng_oren_fallback_tts"
         private const val MAX_HISTORY_TURNS = 10
+private const val REQ_CAMERA_PHOTO = 9001
+private const val REQ_GALLERY_PHOTO = 9002
+private const val PREFS_NAME = "koceng_oren_prefs"
     }
 
     override var onListeningStateChanged: ((Boolean) -> Unit)? = null
@@ -50,6 +63,11 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
     override var onReplyText: ((String) -> Unit)? = null
     override var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
     override var onError: ((String) -> Unit)? = null
+    override var onRoomThemeChanged: ((RoomTheme) -> Unit)? = null
+    private val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    @Volatile private var selectedVoiceName: String = prefs.getString("voice_name", GEMINI_VOICE_NAME) ?: GEMINI_VOICE_NAME
+    @Volatile private var attitudeLevel: Int = prefs.getInt("attitude_level", 1)
+    @Volatile private var lastReplyText: String = ""
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var fallbackTts: TextToSpeech? = null
@@ -253,9 +271,15 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
             - Jangan gunakan simbol markdown berlebihan seperti tanda bintang ganda atau pagar agar enak dibaca dan diucapkan.
         """.trimIndent()
 
+        val attitudeRule = when (attitudeLevel) {
+            0 -> "Level ketus: agak cuek dan santai, tidak terlalu galak."
+            2 -> "Level ketus: super bar-bar, sarkastik, galak maksimal ala koceng oren!"
+            else -> "Level ketus: ketus, blak-blakan, nyolot standar."
+        }
         return if (mode == ChatMode.HOMEWORK) {
             """
             $basePersona
+            $attitudeRule
 
             MODE KHUSUS: PR SEKOLAH AKTIF.
             - Awali dengan satu kalimat sindiran ketus singkat (misal: "Elah, soal gampang gini aja nanya kucing, ya udah nih simak!").
@@ -266,6 +290,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         } else {
             """
             $basePersona
+            $attitudeRule
 
             MODE: OBROLAN SANTAI.
             - Jawab santai seperti manusia ngobrol langsung, singkat dan padat (2-4 kalimat) agar respons suara cepat dan natural.
@@ -420,7 +445,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                     put("speechConfig", JSONObject().apply {
                         put("voiceConfig", JSONObject().apply {
                             put("prebuiltVoiceConfig", JSONObject().apply {
-                                put("voiceName", GEMINI_VOICE_NAME)
+                                put("voiceName",selectedVoiceName) //  GEMINI_VOICE_NAME)
                             })
                         })
                     })
@@ -561,6 +586,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
     }
 
     private fun notifyReply(reply: String) {
+        lastReplyText = reply
         Gdx.app?.postRunnable { onReplyText?.invoke(reply) }
     }
 
@@ -570,5 +596,279 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
 
     private fun notifyError(error: String) {
         Gdx.app?.postRunnable { onError?.invoke(error) }
+    }
+
+    override fun getSavedRoomTheme(): RoomTheme {
+        val name = prefs.getString("room_theme", RoomTheme.DAY.name)
+        return when (name) {
+            RoomTheme.NIGHT.name -> RoomTheme.NIGHT
+            RoomTheme.STUDY.name -> RoomTheme.STUDY
+            else -> RoomTheme.DAY
+        }
+    }
+
+    override fun openPhotoHomeworkPicker() {
+        activity.runOnUiThread {
+            val options = arrayOf("Ambil Foto (Kamera)", "Pilih dari Galeri (Lebih Tajam)")
+            AlertDialog.Builder(activity)
+                .setTitle("Foto Soal PR")
+                .setItems(options) { _, which ->
+                    try {
+                        if (which == 0) {
+                            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                            activity.startActivityForResult(intent, REQ_CAMERA_PHOTO)
+                        } else {
+                            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                                type = "image/*"
+                            }
+                            activity.startActivityForResult(intent, REQ_GALLERY_PHOTO)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(activity, "Gagal membuka foto: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Batal", null)
+                .show()
+        }
+    }
+
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (resultCode != Activity.RESULT_OK) return
+        if (requestCode != REQ_CAMERA_PHOTO && requestCode != REQ_GALLERY_PHOTO) return
+
+        val bitmap: Bitmap? = try {
+            if (requestCode == REQ_CAMERA_PHOTO) {
+                @Suppress("DEPRECATION")
+                data?.extras?.get("data") as? Bitmap
+            } else {
+                val uri = data?.data
+                uri?.let {
+                    activity.contentResolver.openInputStream(it)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            notifyError("Gagal membaca gambar: ${e.message}")
+            null
+        }
+
+        if (bitmap == null) {
+            notifyError("Gambar tidak dapat dimuat.")
+            return
+        }
+
+        val maxDim = 1280
+        val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
+            val scale = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
+            val w = (bitmap.width * scale).toInt().coerceAtLeast(1)
+            val h = (bitmap.height * scale).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(bitmap, w, h, true)
+        } else {
+            bitmap
+        }
+
+        val baos = ByteArrayOutputStream()
+        scaled.compress(Bitmap.CompressFormat.JPEG, 82, baos)
+        val base64Jpeg = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+        requestGeminiVisionHomework(base64Jpeg)
+    }
+
+    private fun requestGeminiVisionHomework(base64Jpeg: String) {
+        val apiKey = BuildConfig.GEMINI_API_KEY.trim()
+        if (apiKey.isEmpty()) {
+            notifyError("API Key Gemini belum diisi.")
+            return
+        }
+        if (!isThinking.compareAndSet(false, true)) {
+            notifyError("Tunggu bentar, masih mikir nih.")
+            return
+        }
+        notifyUserMessage("[Foto Soal PR]")
+        notifyThinking(true)
+        Thread {
+            try {
+                val host = "generativelanguage." + "googleapis.com"
+                val url = URL("https://$host/v1beta/models/$GEMINI_CHAT_MODEL:generateContent?key=$apiKey")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    connectTimeout = 15000
+                    readTimeout = 30000
+                    doOutput = true
+                }
+                val prompt = "Baca soal PR pada gambar ini dengan teliti, lalu kerjakan dan jelaskan jawabannya langkah demi langkah dengan jelas."
+                val payload = JSONObject().apply {
+                    put("systemInstruction", JSONObject().apply {
+                        put("parts", JSONArray().put(JSONObject().put("text", buildSystemInstruction(ChatMode.HOMEWORK))))
+                    })
+                    put("contents", JSONArray().put(JSONObject().apply {
+                        put("role", "user")
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().put("inlineData", JSONObject().apply {
+                                put("mimeType", "image/jpeg")
+                                put("data", base64Jpeg)
+                            }))
+                            put(JSONObject().put("text", prompt))
+                        })
+                    }))
+                    put("generationConfig", JSONObject().apply {
+                        put("temperature", 0.5)
+                        put("maxOutputTokens", 1024)
+                    })
+                }
+                conn.outputStream.use { os ->
+                    os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                }
+                val code = conn.responseCode
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) {
+                    notifyError("Gagal memproses foto PR (HTTP $code)")
+                    return@Thread
+                }
+                val json = JSONObject(body)
+                val replyText = json.optJSONArray("candidates")
+                    ?.optJSONObject(0)
+                    ?.optJSONObject("content")
+                    ?.optJSONArray("parts")
+                    ?.optJSONObject(0)
+                    ?.optString("text")
+                    ?.trim()
+                    .orEmpty()
+                if (replyText.isEmpty()) {
+                    notifyError("Gemini tidak memberikan jawaban untuk foto PR.")
+                    return@Thread
+                }
+                synchronized(chatHistory) {
+                    chatHistory.add("user" to "[Foto Soal PR]")
+                    chatHistory.add("model" to replyText)
+                    while (chatHistory.size > MAX_HISTORY_TURNS) {
+                        chatHistory.removeAt(0)
+                    }
+                }
+                notifyReply(replyText)
+                val spokenText = prepareSpokenText(replyText)
+                val playedWithGemini = speakWithGeminiNaturalVoice(apiKey, spokenText)
+                if (!playedWithGemini) {
+                    speakWithFallbackTts(spokenText)
+                }
+            } catch (e: Exception) {
+                notifyError("Error foto PR: ${e.message}")
+            } finally {
+                isThinking.set(false)
+                notifyThinking(false)
+            }
+        }.start()
+    }
+
+    override fun copyLastReplyToClipboard() {
+        activity.runOnUiThread {
+            if (lastReplyText.isBlank()) {
+                Toast.makeText(activity, "Belum ada jawaban untuk disalin.", Toast.LENGTH_SHORT).show()
+                return@runOnUiThread
+            }
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Jawaban Koceng Oren", lastReplyText)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(activity, "Jawaban berhasil disalin!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun openChatHistoryDialog() {
+        activity.runOnUiThread {
+            val historyText = synchronized(chatHistory) {
+                if (chatHistory.isEmpty()) {
+                    "Belum ada riwayat obrolan."
+                } else {
+                    chatHistory.joinToString("\n\n") { (role, text) ->
+                        val label = if (role == "user") "Kamu" else "Koceng Oren"
+                        "$label:\n$text"
+                    }
+                }
+            }
+            val textView = TextView(activity).apply {
+                text = historyText
+                setTextIsSelectable(true)
+                setPadding(40, 24, 40, 24)
+            }
+            val scrollView = ScrollView(activity).apply {
+                addView(textView)
+            }
+            AlertDialog.Builder(activity)
+                .setTitle("Riwayat Obrolan")
+                .setView(scrollView)
+                .setPositiveButton("Salin Terakhir") { _, _ ->
+                    copyLastReplyToClipboard()
+                }
+                .setNegativeButton("Tutup", null)
+                .show()
+        }
+    }
+
+    override fun openSettingsDialog() {
+        activity.runOnUiThread {
+            val menuItems = arrayOf("Ganti Suara Gemini", "Atur Level Ketus", "Ganti Tema Ruangan")
+            AlertDialog.Builder(activity)
+                .setTitle("Pengaturan Koceng Oren")
+                .setItems(menuItems) { _, which ->
+                    when (which) {
+                        0 -> {
+                            val voices = arrayOf("Puck", "Fenrir", "Charon", "Aoede", "Kore")
+                            val checked = voices.indexOf(selectedVoiceName).coerceAtLeast(0)
+                            AlertDialog.Builder(activity)
+                                .setTitle("Pilih Suara Gemini")
+                                .setSingleChoiceItems(voices, checked) { dialog, idx ->
+                                    val chosen = voices[idx]
+                                    selectedVoiceName = chosen
+                                    prefs.edit().putString("voice_name", chosen).apply()
+                                    dialog.dismiss()
+                                    Toast.makeText(activity, "Suara diganti ke $chosen", Toast.LENGTH_SHORT).show()
+                                    Thread {
+                                        val apiKey = BuildConfig.GEMINI_API_KEY.trim()
+                                        val sample = "Meow, ini suara $chosen."
+                                        val played = if (apiKey.isNotEmpty()) speakWithGeminiNaturalVoice(apiKey, sample) else false
+                                        if (!played) speakWithFallbackTts(sample)
+                                    }.start()
+                                }
+                                .setNegativeButton("Batal", null)
+                                .show()
+                        }
+                        1 -> {
+                            val levels = arrayOf("Agak Cuek", "Ketus Standar", "Super Bar-Bar")
+                            val checked = attitudeLevel.coerceIn(0, 2)
+                            AlertDialog.Builder(activity)
+                                .setTitle("Atur Level Ketus")
+                                .setSingleChoiceItems(levels, checked) { dialog, idx ->
+                                    attitudeLevel = idx
+                                    prefs.edit().putInt("attitude_level", idx).apply()
+                                    dialog.dismiss()
+                                    Toast.makeText(activity, "Level ketus: ${levels[idx]}", Toast.LENGTH_SHORT).show()
+                                }
+                                .setNegativeButton("Batal", null)
+                                .show()
+                        }
+                        2 -> {
+                            val themeLabels = arrayOf("Siang Cerah", "Malam Lampu Tidur", "Ruang Belajar Hangat")
+                            val themes = arrayOf(RoomTheme.DAY, RoomTheme.NIGHT, RoomTheme.STUDY)
+                            val current = getSavedRoomTheme()
+                            val checked = themes.indexOf(current).coerceAtLeast(0)
+                            AlertDialog.Builder(activity)
+                                .setTitle("Ganti Tema Ruangan")
+                                .setSingleChoiceItems(themeLabels, checked) { dialog, idx ->
+                                    val chosenTheme = themes[idx]
+                                    prefs.edit().putString("room_theme", chosenTheme.name).apply()
+                                    dialog.dismiss()
+                                    Gdx.app?.postRunnable { onRoomThemeChanged?.invoke(chosenTheme) }
+                                    Toast.makeText(activity, "Tema: ${themeLabels[idx]}", Toast.LENGTH_SHORT).show()
+                                }
+                                .setNegativeButton("Batal", null)
+                                .show()
+                        }
+                    }
+                }
+                .setNegativeButton("Tutup", null)
+                .show()
+        }
     }
 }
