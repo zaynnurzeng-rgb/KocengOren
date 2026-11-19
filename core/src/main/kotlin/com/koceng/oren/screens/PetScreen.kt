@@ -111,13 +111,29 @@ class PetScreen(
                     sfx.playPoke()
                     val headPos = getHeadScreenPos()
                     particleOverlay.spawnStars(headPos.x, headPos.y)
-                    if (!aiChatBridge.isBusy()) petHud.showReply("Woy! Jangan colek-colek kepala gue, nggak sopan banget sih lu!")
+                    if (!aiChatBridge.isBusy()) {
+                        val reaction = listOf(
+                            "Woy! Jangan colek-colek kepala gue, nggak sopan banget sih lu!",
+                            "Aduh! Tangan lu nggak bisa diem ya, pusing nih kepala gue!",
+                            "Heh! Kepala gue bukan tombol, jangan asal pencet!"
+                            ).random()
+                        petHud.showReply(reaction)
+                        aiChatBridge.speakText(reaction)
+                    }
                 }
                 HitZone.BELLY -> {
                     sfx.playPurr()
                     val bellyPos = getBellyScreenPos()
                     particleOverlay.spawnHearts(bellyPos.x, bellyPos.y)
-                    if (!aiChatBridge.isBusy()) petHud.showReply("Apaan sih pegang-pegang perut gue? Geli woy, minggir sana!")
+                    if (!aiChatBridge.isBusy()) {
+                        val reaction = listOf(
+                            "Apaan sih pegang-pegang perut gue? Geli woy, minggir sana!",
+                            "Heh! Jangan colek perut gue, emang lu kira gue boneka?",
+                            "Idih, tangan lu gatel amat megang-pegang perut gue!"
+                            ).random()
+                        petHud.showReply(reaction)
+                        aiChatBridge.speakText(reaction)
+                    }
                 }
                 HitZone.NONE -> {}
             }
