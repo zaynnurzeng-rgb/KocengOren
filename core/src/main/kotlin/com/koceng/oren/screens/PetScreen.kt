@@ -8,33 +8,31 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.PerspectiveCamera
-import com.badlogic.gdx.graphics.Pixmap
-import com.badlogic.gdx.graphics.Texture
-import com.badlogic.gdx.graphics.g2d.BitmapFont
-import com.badlogic.gdx.graphics.g2d.TextureRegion
-import com.badlogic.gdx.scenes.scene2d.InputEvent
-import com.badlogic.gdx.scenes.scene2d.Stage
-import com.badlogic.gdx.scenes.scene2d.ui.Label
-import com.badlogic.gdx.scenes.scene2d.ui.ProgressBar
-import com.badlogic.gdx.scenes.scene2d.ui.Skin
-import com.badlogic.gdx.scenes.scene2d.ui.Table
-import com.badlogic.gdx.scenes.scene2d.ui.TextButton
-import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
-import com.badlogic.gdx.scenes.scene2d.utils.Drawable
-import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
+import com.badlogic.gdx.graphics.VertexAttributes
+import com.badlogic.gdx.graphics.g3d.Material
+import com.badlogic.gdx.graphics.g3d.Model
+import com.badlogic.gdx.graphics.g3d.ModelInstance
+import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
 import com.badlogic.gdx.utils.Timer
-import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.koceng.oren.ai.AiChatBridge
 import com.koceng.oren.audio.VoiceMimicBridge
 import com.koceng.oren.audio.VoiceMimicCallback
 import com.koceng.oren.audio.WavUtils
 import com.koceng.oren.character.HitZone
 import com.koceng.oren.character.PetCharacter
 import com.koceng.oren.character.PetState
+import com.koceng.oren.data.PetStateManager
 import com.koceng.oren.input.PetTouchController
+import com.koceng.oren.ui.PetHud
+import net.mgsx.gltf.scene3d.attributes.PBRColorAttribute
 import net.mgsx.gltf.scene3d.lights.DirectionalLightEx
+import net.mgsx.gltf.scene3d.scene.Scene
 import net.mgsx.gltf.scene3d.scene.SceneManager
 
-class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), VoiceMimicCallback {
+class PetScreen(
+    private val voiceBridge: VoiceMimicBridge,
+    private val aiChatBridge: AiChatBridge
+) : ScreenAdapter(), VoiceMimicCallback {
 
     // --- 3D Scene Components ---
     private lateinit var camera: PerspectiveCamera
@@ -42,23 +40,16 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
     private lateinit var pet: PetCharacter
     private lateinit var touchController: PetTouchController
 
-    // --- 2D Scene2D UI Components ---
-    private lateinit var stage: Stage
-    private lateinit var uiSkin: Skin
+    // Lantai 3D (Pedestal)
+    private var floorModel: Model? = null
+    private var floorScene: Scene? = null
 
-    // Status Virtual Pet (0f - 100f)
-    private var hunger: Float = 85f
-    private var energy: Float = 90f
-    private val hungerDecayRate = 1.0f  // Berkurang 1% per detik
-    private val energyDecayRate = 0.8f  // Berkurang 0.8% per detik saat bangun
-    private val energyRegenRate = 6.0f  // Bertambah 6% per detik saat tidur
+    // --- Virtual Pet State Manager & HUD ---
+    private val petStateManager = PetStateManager()
+    private lateinit var petHud: PetHud
 
-    // UI Widgets
-    private lateinit var hungerBar: ProgressBar
-    private lateinit var energyBar: ProgressBar
-    private lateinit var hungerLabel: Label
-    private lateinit var energyLabel: Label
-    private lateinit var sleepButton: TextButton
+    // Mode: Tiru Suara (false) vs Ngobrol AI (true)
+    private var isAiMode: Boolean = false
 
     // --- Audio Mimic ---
     private var currentSound: Sound? = null
@@ -66,17 +57,19 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
 
     override fun show() {
         // ==========================================
-        // 1. Inisialisasi Kamera & Scene 3D (PBR)
+        // 1. Inisialisasi Kamera 3D
         // ==========================================
         camera = PerspectiveCamera(60f, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()).apply {
-            position.set(0f, 1.2f, 2.8f)
-            lookAt(0f, 0.9f, 0f)
+            position.set(0f, 1.25f, 2.75f)
+            lookAt(0f, 0.95f, 0f)
             near = 0.1f
             far = 100f
             update()
         }
 
-        // SceneManager dengan kapasitas 64 bones (cartoon_cat.glb memiliki 58 bones)
+        // ==========================================
+        // 2. Inisialisasi SceneManager PBR (64 bones)
+        // ==========================================
         sceneManager = SceneManager(64)
         sceneManager.camera = camera
 
@@ -88,206 +81,220 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
         sceneManager.environment.add(sunLight)
         sceneManager.setAmbientLight(0.6f)
 
+        // ==========================================
+        // 3. Tambahkan Lantai 3D (ModelBuilder)
+        // ==========================================
+        val modelBuilder = ModelBuilder()
+        val floorMaterial = Material(
+            PBRColorAttribute.createBaseColorFactor(Color(0.80f, 0.84f, 0.90f, 1f))
+        )
+        floorModel = modelBuilder.createCylinder(
+            3.6f, 0.12f, 3.6f, 32,
+            floorMaterial,
+            (VertexAttributes.Usage.Position or VertexAttributes.Usage.Normal).toLong()
+        )
+        val floorInstance = ModelInstance(floorModel).apply {
+            transform.setToTranslation(0f, -0.06f, 0f)
+        }
+        floorScene = Scene(floorInstance)
+        sceneManager.addScene(floorScene)
+
+        // ==========================================
+        // 4. Memuat Model GLB Karakter
+        // ==========================================
         pet = PetCharacter("models/cartoon_cat.glb")
         sceneManager.addScene(pet.scene)
 
         touchController = PetTouchController(camera, pet) { hitZone ->
             when (hitZone) {
-                HitZone.HEAD -> Gdx.app.log("PetScreen", "Kepala disentuh: Dizzy")
-                HitZone.BELLY -> Gdx.app.log("PetScreen", "Perut disentuh: Laughing")
+                HitZone.HEAD -> {
+                    petStateManager.play(5f)
+                    petHud.showSubtitle("Aduh! Kepalaku pusing!", 2f)
+                }
+                HitZone.BELLY -> {
+                    petStateManager.play(10f)
+                    petHud.showSubtitle("Geli banget perutku, meong!", 2f)
+                }
                 HitZone.NONE -> {}
             }
         }
 
         // ==========================================
-        // 2. Inisialisasi Scene2D Stage & UI Skin
+        // 5. Inisialisasi PetHud (Scene2D)
         // ==========================================
-        stage = Stage(ScreenViewport())
-        uiSkin = createCustomSkin()
+        petHud = PetHud()
+        setupHudCallbacks()
 
-        setupUI()
+        // Sinkronisasi status awal dari preferences
+        petHud.updateStatus(
+            petStateManager.hunger,
+            petStateManager.energy,
+            petStateManager.happiness,
+            petStateManager.isSleeping
+        )
+        if (petStateManager.isSleeping) {
+            pet.playSleeping()
+        }
 
         // ==========================================
-        // 3. Konfigurasi InputMultiplexer
-        //    (Stage diletakkan PERTAMA agar klik UI
-        //     tidak tembus menjadi raycast 3D)
+        // 6. InputMultiplexer
+        //    (PetHud Stage diprioritaskan PERTAMA)
         // ==========================================
         val multiplexer = InputMultiplexer()
-        multiplexer.addProcessor(stage)           // Prioritas 1: UI Scene2D
-        multiplexer.addProcessor(touchController) // Prioritas 2: Raycast Model 3D
+        multiplexer.addProcessor(petHud.stage)       // Prioritas 1: UI Tombol & HUD
+        multiplexer.addProcessor(touchController)   // Prioritas 2: Raycast 3D Karakter
         Gdx.input.inputProcessor = multiplexer
 
         // ==========================================
-        // 4. Inisialisasi Voice Mimic Bridge (Mic)
+        // 7. Hubungkan Audio Mimic Bridge
         // ==========================================
         voiceBridge.setCallback(this)
         voiceBridge.checkAndRequestPermissions {
-            Gdx.app.log("PetScreen", "Izin mic diberikan, memulai monitoring suara...")
-            voiceBridge.startListening()
+            if (!isAiMode) {
+                voiceBridge.startListening()
+            }
         }
+
+        // ==========================================
+        // 8. Hubungkan AI Chat Bridge
+        // ==========================================
+        setupAiChatCallbacks()
     }
 
-    /**
-     * Membangun antarmuka Scene2D: Status Bar di atas dan Tombol Aksi di bawah
-     */
-    private fun setupUI() {
-        val rootTable = Table().apply {
-            setFillParent(true)
-        }
-        stage.addActor(rootTable)
-
-        // --- Container Bagian Atas: Status Bar (Lapar & Energi) ---
-        val topTable = Table().apply {
-            pad(20f)
+    private fun setupHudCallbacks() {
+        petHud.onFeedClicked = {
+            petStateManager.feed(25f)
+            pet.playEating()
+            petHud.showSubtitle("Nyam nyam! Enak banget makannya!", 2.5f)
         }
 
-        hungerLabel = Label("Lapar: ${hunger.toInt()}%", uiSkin)
-        hungerBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "hunger-bar").apply {
-            setValue(hunger)
-            setAnimateDuration(0.2f)
+        petHud.onSleepClicked = {
+            petStateManager.sleep()
+            if (petStateManager.isSleeping) {
+                pet.playSleeping()
+                petHud.showSubtitle("Zzz... Koceng Oren lagi tidur pulas.", 2.5f)
+            } else {
+                pet.wakeUp()
+                petHud.showSubtitle("Hoam... Koceng Oren sudah bangun!", 2.5f)
+            }
         }
 
-        energyLabel = Label("Energi: ${energy.toInt()}%", uiSkin)
-        energyBar = ProgressBar(0f, 100f, 0.5f, false, uiSkin, "energy-bar").apply {
-            setValue(energy)
-            setAnimateDuration(0.2f)
+        petHud.onPlayClicked = {
+            petStateManager.play(20f)
+            pet.playLaughing()
+            petHud.showSubtitle("Meong! Asyik banget diajak main!", 2.5f)
         }
 
-        topTable.add(hungerLabel).left().padRight(12f)
-        topTable.add(hungerBar).width(200f).height(24f).row()
-        topTable.add(energyLabel).left().padRight(12f).padTop(10f)
-        topTable.add(energyBar).width(200f).height(24f).padTop(10f)
+        petHud.onModeToggleClicked = {
+            isAiMode = !isAiMode
+            petHud.setMode(isAiMode)
 
-        rootTable.add(topTable).top().expandX().fillX().row()
-
-        // Ruang kosong fleksibel di tengah agar pet 3D tetap leluasa terlihat
-        rootTable.add().expand().row()
-
-        // --- Container Bagian Bawah: Action Buttons ---
-        val bottomTable = Table().apply {
-            padBottom(36f)
+            // Anti-bentrok Mikrofon
+            if (isAiMode) {
+                voiceBridge.stopListening()
+                aiChatBridge.stopAll()
+            } else {
+                aiChatBridge.stopAll()
+                voiceBridge.startListening()
+            }
         }
 
-        val feedButton = TextButton("Beri Makan", uiSkin).apply {
-            addListener(object : ClickListener() {
-                override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                    onFeedClicked()
+        petHud.onTalkClicked = {
+            if (isAiMode) {
+                if (aiChatBridge.isBusy()) {
+                    aiChatBridge.stopAll()
+                } else {
+                    aiChatBridge.startListening()
                 }
-            })
-        }
-
-        sleepButton = TextButton("Tidur", uiSkin).apply {
-            addListener(object : ClickListener() {
-                override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                    onSleepClicked()
-                }
-            })
-        }
-
-        bottomTable.add(feedButton).width(160f).height(60f).padRight(20f)
-        bottomTable.add(sleepButton).width(160f).height(60f)
-
-        rootTable.add(bottomTable).bottom().pad(16f)
-    }
-
-    /**
-     * Logika Tombol "Beri Makan"
-     */
-    private fun onFeedClicked() {
-        Gdx.app.log("GameLogic", "Tombol Beri Makan ditekan!")
-        // Tambah status lapar (+25, maksimal 100)
-        hunger = (hunger + 25f).coerceAtMost(100f)
-
-        // Jika kucing sedang tidur, bangunkan lalu makan
-        if (pet.currentState == PetState.SLEEPING) {
-            sleepButton.setText("Tidur")
-        }
-
-        // Picu animasi makan pada model GLB
-        pet.playEating()
-    }
-
-    /**
-     * Logika Tombol "Tidur / Bangun"
-     */
-    private fun onSleepClicked() {
-        if (pet.currentState == PetState.SLEEPING) {
-            Gdx.app.log("GameLogic", "Kucing dibangunkan.")
-            pet.wakeUp()
-            sleepButton.setText("Tidur")
-        } else {
-            Gdx.app.log("GameLogic", "Kucing mulai tidur.")
-            pet.playSleeping()
-            sleepButton.setText("Bangun")
-        }
-    }
-
-    override fun render(delta: Float) {
-        // 1. Update logika status virtual pet
-        updatePetStatus(delta)
-
-        // 2. Update animasi & bounding box 3D
-        pet.update(delta)
-
-        // 3. Bersihkan layar buffer warna dan kedalaman
-        Gdx.gl.glViewport(0, 0, Gdx.graphics.width, Gdx.graphics.height)
-        Gdx.gl.glClearColor(0.85f, 0.88f, 0.92f, 1f)
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
-
-        // 4. RENDER LAYER 1: 3D Scene PBR
-        sceneManager.update(delta)
-        sceneManager.render()
-
-        // 5. RENDER LAYER 2: 2D Scene2D UI di atas layer 3D
-        stage.act(delta)
-        stage.draw()
-    }
-
-    /**
-     * Pengurangan status lapar dan energi seiring berjalannya waktu
-     */
-    private fun updatePetStatus(delta: Float) {
-        // Tingkat lapar berkurang perlahan
-        hunger = (hunger - hungerDecayRate * delta).coerceIn(0f, 100f)
-
-        // Energi bertambah jika tidur, berkurang jika bangun
-        if (pet.currentState == PetState.SLEEPING) {
-            energy = (energy + energyRegenRate * delta).coerceIn(0f, 100f)
-        } else {
-            energy = (energy - energyDecayRate * delta).coerceIn(0f, 100f)
-        }
-
-        // Sinkronisasi nilai ke elemen UI
-        hungerBar.setValue(hunger)
-        energyBar.setValue(energy)
-        hungerLabel.setText("Lapar: ${hunger.toInt()}%")
-        energyLabel.setText("Energi: ${energy.toInt()}%")
-    }
-
-    override fun resize(width: Int, height: Int) {
-        // Update viewport 3D dan viewport 2D Stage secara proporsional
-        sceneManager.updateViewport(width.toFloat(), height.toFloat())
-        stage.viewport.update(width, height, true)
-    }
-
-    // --- Implementasi VoiceMimicCallback ---
-
-    override fun onSpeechStarted() {
-        Gdx.app.postRunnable {
-            if (pet.currentState != PetState.SLEEPING) {
-                pet.playListening()
             }
         }
     }
 
+    private fun setupAiChatCallbacks() {
+        aiChatBridge.onListeningStateChanged = { isListening ->
+            petHud.setTalkButtonState(isListening)
+            if (isListening) {
+                pet.playListening()
+            }
+        }
+
+        aiChatBridge.onReplyText = { reply ->
+            petHud.showSubtitle(reply, 0f)
+        }
+
+        aiChatBridge.onSpeakingStateChanged = { isSpeaking ->
+            if (isSpeaking) {
+                pet.playTalking()
+            } else {
+                if (pet.currentState != PetState.SLEEPING) {
+                    pet.playIdle()
+                }
+            }
+        }
+
+        aiChatBridge.onError = { error ->
+            petHud.showSubtitle(error, 4f)
+            if (pet.currentState != PetState.SLEEPING) {
+                pet.playIdle()
+            }
+        }
+    }
+
+    override fun render(delta: Float) {
+        // 1. Update logika kebutuhan virtual pet
+        petStateManager.update(delta)
+        petHud.updateStatus(
+            petStateManager.hunger,
+            petStateManager.energy,
+            petStateManager.happiness,
+            petStateManager.isSleeping
+        )
+        aiChatBridge.updatePetStatus(
+            petStateManager.hunger,
+            petStateManager.energy,
+            petStateManager.happiness
+        )
+
+        // 2. Update animasi 3D
+        pet.update(delta)
+
+        // 3. Clear buffer warna dan kedalaman
+        Gdx.gl.glViewport(0, 0, Gdx.graphics.width, Gdx.graphics.height)
+        Gdx.gl.glClearColor(0.85f, 0.88f, 0.92f, 1f)
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
+
+        // 4. RENDER LAYER 1: 3D Scene PBR (Lantai & Kucing)
+        sceneManager.update(delta)
+        sceneManager.render()
+
+        // 5. RENDER LAYER 2: 2D Scene2D UI di atas 3D
+        petHud.render(delta)
+    }
+
+    override fun resize(width: Int, height: Int) {
+        sceneManager.updateViewport(width.toFloat(), height.toFloat())
+        petHud.resize(width, height)
+    }
+
+    // --- Callback Voice Mimic (Mode Tiru Suara) ---
+
+    override fun onSpeechStarted() {
+        if (isAiMode || pet.currentState == PetState.SLEEPING) return
+
+        Gdx.app.postRunnable {
+            pet.playListening()
+            petHud.showSubtitle("Mendengarkan...", 0f)
+        }
+    }
+
     override fun onSpeechCaptured(pcmData: ByteArray, sampleRate: Int, durationSeconds: Float) {
+        if (isAiMode || pet.currentState == PetState.SLEEPING) {
+            voiceBridge.startListening()
+            return
+        }
+
         Gdx.app.postRunnable {
             try {
-                if (pet.currentState == PetState.SLEEPING) {
-                    voiceBridge.startListening()
-                    return@postRunnable
-                }
-
                 val tempWavFile: FileHandle = Gdx.files.local("mimic_cache.wav")
                 val wavBytes = WavUtils.pcmToWav(pcmData, sampleRate)
                 tempWavFile.writeBytes(wavBytes, false)
@@ -299,96 +306,56 @@ class PetScreen(private val voiceBridge: VoiceMimicBridge) : ScreenAdapter(), Vo
                 currentSound?.play(1.0f, chipmunkPitch, 0.0f)
 
                 pet.playTalking()
+                petHud.showSubtitle("Menirukan suara!", durationSeconds / chipmunkPitch)
 
-                val actualPlaybackDuration = durationSeconds / chipmunkPitch
+                val actualDuration = durationSeconds / chipmunkPitch
                 Timer.schedule(object : Timer.Task() {
                     override fun run() {
                         if (pet.currentState != PetState.SLEEPING) {
                             pet.playIdle()
                         }
-                        voiceBridge.startListening()
+                        if (!isAiMode) {
+                            voiceBridge.startListening()
+                        }
                     }
-                }, actualPlaybackDuration)
-
+                }, actualDuration)
             } catch (e: Exception) {
-                Gdx.app.error("PetScreen", "Gagal memutar audio peniru", e)
                 pet.playIdle()
-                voiceBridge.startListening()
+                if (!isAiMode) {
+                    voiceBridge.startListening()
+                }
             }
         }
     }
 
     override fun onError(errorMessage: String) {
-        Gdx.app.error("PetScreen", "Error mic/audio: $errorMessage")
+        if (!isAiMode) {
+            petHud.showSubtitle(errorMessage, 3f)
+        }
     }
 
     override fun pause() {
+        petStateManager.save()
         voiceBridge.stopListening()
+        aiChatBridge.stopAll()
     }
 
     override fun resume() {
-        voiceBridge.startListening()
+        if (!isAiMode) {
+            voiceBridge.startListening()
+        }
     }
 
     override fun dispose() {
+        petStateManager.save()
         voiceBridge.stopListening()
         voiceBridge.setCallback(null)
+        aiChatBridge.stopAll()
+
         currentSound?.dispose()
         pet.dispose()
+        floorModel?.dispose()
         sceneManager.dispose()
-        stage.dispose()
-        uiSkin.dispose()
-    }
-
-    // ========================================================
-    // Helper: Pembuatan UI Skin secara programatik (Murni Kode)
-    //         Mencegah crash karena file uiskin.json tidak ada
-    // ========================================================
-    private fun createCustomSkin(): Skin {
-        val skin = Skin()
-        val font = BitmapFont().apply {
-            data.setScale(1.2f) // Skala font agar mudah dibaca di layar HP
-        }
-        skin.add("default-font", font)
-
-        fun createSolidDrawable(color: Color): Drawable {
-            val pixmap = Pixmap(1, 1, Pixmap.Format.RGBA8888).apply {
-                setColor(color)
-                fill()
-            }
-            val texture = Texture(pixmap)
-            pixmap.dispose()
-            return TextureRegionDrawable(TextureRegion(texture))
-        }
-
-        // Style Label
-        val labelStyle = Label.LabelStyle(font, Color.WHITE)
-        skin.add("default", labelStyle)
-
-        // Style ProgressBar (Lapar & Energi)
-        val bgDrawable = createSolidDrawable(Color(0.15f, 0.15f, 0.15f, 0.75f))
-        val hungerFill = createSolidDrawable(Color(0.95f, 0.55f, 0.15f, 1.0f)) // Warna Oranye
-        val energyFill = createSolidDrawable(Color(0.20f, 0.75f, 0.35f, 1.0f)) // Warna Hijau
-
-        val hungerStyle = ProgressBar.ProgressBarStyle(bgDrawable, null).apply {
-            knobBefore = hungerFill
-        }
-        skin.add("hunger-bar", hungerStyle)
-
-        val energyStyle = ProgressBar.ProgressBarStyle(bgDrawable, null).apply {
-            knobBefore = energyFill
-        }
-        skin.add("energy-bar", energyStyle)
-
-        // Style TextButton (Aksi)
-        val btnUp = createSolidDrawable(Color(0.20f, 0.45f, 0.85f, 0.90f))   // Biru
-        val btnDown = createSolidDrawable(Color(0.12f, 0.30f, 0.65f, 1.0f))  // Biru gelap saat ditekan
-        val buttonStyle = TextButton.TextButtonStyle(btnUp, btnDown, btnUp, font).apply {
-            fontColor = Color.WHITE
-            downFontColor = Color.LIGHT_GRAY
-        }
-        skin.add("default", buttonStyle)
-
-        return skin
+        petHud.dispose()
     }
 }
