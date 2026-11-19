@@ -8,11 +8,9 @@ import com.badlogic.gdx.files.FileHandle
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.PerspectiveCamera
-import com.badlogic.gdx.graphics.VertexAttributes
-import com.badlogic.gdx.graphics.g3d.Material
-import com.badlogic.gdx.graphics.g3d.Model
-import com.badlogic.gdx.graphics.g3d.ModelInstance
-import com.badlogic.gdx.graphics.g3d.utils.ModelBuilder
+import com.badlogic.gdx.graphics.Pixmap
+import com.badlogic.gdx.graphics.Texture
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.Timer
@@ -28,9 +26,7 @@ import com.koceng.oren.data.PetStateManager
 import com.koceng.oren.input.PetTouchController
 import com.koceng.oren.ui.PetHud
 import com.koceng.oren.ui.PetParticleOverlay
-import net.mgsx.gltf.scene3d.attributes.PBRColorAttribute
 import net.mgsx.gltf.scene3d.lights.DirectionalLightEx
-import net.mgsx.gltf.scene3d.scene.Scene
 import net.mgsx.gltf.scene3d.scene.SceneManager
 
 class PetScreen(
@@ -38,39 +34,38 @@ class PetScreen(
     private val aiChatBridge: AiChatBridge
 ) : ScreenAdapter(), VoiceMimicCallback {
 
-    // --- 3D Scene Components ---
+    // -- 3D Scene Components --
     private lateinit var camera: PerspectiveCamera
     private lateinit var sceneManager: SceneManager
     private lateinit var pet: PetCharacter
     private lateinit var touchController: PetTouchController
     private lateinit var sunLight: DirectionalLightEx
 
-    // Ruangan 3D (Lantai & Dinding)
-    private var floorModel: Model? = null
-    private var floorScene: Scene? = null
-    private var wallModel: Model? = null
-    private var wallScene: Scene? = null
+    // -- 2D Cartoon Room Backdrop --
+    private lateinit var backdropBatch: SpriteBatch
+    private lateinit var roomBackdropTexture: Texture
 
-    // Efek Kamera Subtle Zoom
-    private val defaultCameraPos = Vector3(0f, 1.25f, 2.75f)
-    private val zoomCameraPos = Vector3(0f, 1.15f, 2.25f)
+    // Efek Kamera (Jarak ideal agar seluruh tubuh kucing terlihat utuh)
+    private val defaultCameraPos = Vector3(0f, 1.45f, 4.65f)
+    private val zoomCameraPos = Vector3(0f, 1.38f, 4.10f)
+    private val cameraLookAtY = 1.05f
     private val targetCameraPos = Vector3(defaultCameraPos)
     private val tempVec3 = Vector3()
 
     // Mode Pencahayaan Ruangan (Siang vs Malam / Lampu Tidur)
-    private var currentLightIntensity = 2.5f
-    private var targetLightIntensity = 2.5f
-    private var currentAmbient = 0.6f
-    private var targetAmbient = 0.6f
-    private val dayClearColor = Color(0.85f, 0.88f, 0.92f, 1f)
-    private val nightClearColor = Color(0.06f, 0.08f, 0.14f, 1f)
-    private val currentClearColor = Color(dayClearColor)
+    private var currentLightIntensity = 2.6f
+    private var targetLightIntensity = 2.6f
+    private var currentAmbient = 0.72f
+    private var targetAmbient = 0.72f
+    private val dayBackdropTint = Color(1f, 1f, 1f, 1f)
+    private val nightBackdropTint = Color(0.28f, 0.34f, 0.54f, 1f)
+    private val currentBackdropTint = Color(dayBackdropTint)
 
     // --- Virtual Pet State Manager & HUD ---
     private val petStateManager = PetStateManager()
     private lateinit var petHud: PetHud
 
-    // --- Efek Audio & Partikel Prosedural Tanpa Aset Eksternal ---
+    // --- Efek Audio & Partikel Prosedural ---
     private lateinit var sfx: ProceduralSfx
     private lateinit var particleOverlay: PetParticleOverlay
     private var zzzTimer = 0f
@@ -86,9 +81,9 @@ class PetScreen(
         // ==========================================
         // 1. Inisialisasi Kamera 3D
         // ==========================================
-        camera = PerspectiveCamera(60f, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()).apply {
+        camera = PerspectiveCamera(50f, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()).apply {
             position.set(defaultCameraPos)
-            lookAt(0f, 0.95f, 0f)
+            lookAt(0f, cameraLookAtY, 0f)
             near = 0.1f
             far = 100f
             update()
@@ -109,39 +104,16 @@ class PetScreen(
         sceneManager.setAmbientLight(currentAmbient)
 
         // ==========================================
-        // 3. Tambahkan Ruangan 3D (Lantai & Dinding Belakang)
+        // 3. Inisialisasi Latar Belakang Ruangan Kartun
         // ==========================================
-        val modelBuilder = ModelBuilder()
-
-        // Lantai Pedestal Bundar
-        val floorMaterial = Material(
-            PBRColorAttribute.createBaseColorFactor(Color(0.80f, 0.84f, 0.90f, 1f))
-        )
-        floorModel = modelBuilder.createCylinder(
-            3.6f, 0.12f, 3.6f, 32,
-            floorMaterial,
-            (VertexAttributes.Usage.Position or VertexAttributes.Usage.Normal).toLong()
-        )
-        val floorInstance = ModelInstance(floorModel).apply {
-            transform.setToTranslation(0f, -0.06f, 0f)
+        backdropBatch = SpriteBatch()
+        roomBackdropTexture = if (Gdx.files.internal("bg_room.png").exists()) {
+            Texture(Gdx.files.internal("bg_room.png")).apply {
+                setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+            }
+        } else {
+            createCartoonRoomTexture()
         }
-        floorScene = Scene(floorInstance)
-        sceneManager.addScene(floorScene)
-
-        // Dinding Belakang Ruangan
-        val wallMaterial = Material(
-            PBRColorAttribute.createBaseColorFactor(Color(0.92f, 0.90f, 0.86f, 1f))
-        )
-        wallModel = modelBuilder.createBox(
-            5.0f, 3.6f, 0.1f,
-            wallMaterial,
-            (VertexAttributes.Usage.Position or VertexAttributes.Usage.Normal).toLong()
-        )
-        val wallInstance = ModelInstance(wallModel).apply {
-            transform.setToTranslation(0f, 1.70f, -1.80f)
-        }
-        wallScene = Scene(wallInstance)
-        sceneManager.addScene(wallScene)
 
         // ==========================================
         // 4. Inisialisasi SFX & Partikel Prosedural
@@ -181,7 +153,6 @@ class PetScreen(
         petHud = PetHud()
         setupHudCallbacks()
 
-        // Sinkronisasi status awal dari preferences
         petHud.updateStatus(
             petStateManager.hunger,
             petStateManager.energy,
@@ -190,17 +161,16 @@ class PetScreen(
         )
         if (petStateManager.isSleeping) {
             pet.playSleeping()
-            targetLightIntensity = 0.35f
-            targetAmbient = 0.12f
+            targetLightIntensity = 0.40f
+            targetAmbient = 0.18f
         }
 
         // ==========================================
         // 7. InputMultiplexer
-        //    (PetHud Stage diprioritaskan PERTAMA)
         // ==========================================
         val multiplexer = InputMultiplexer()
-        multiplexer.addProcessor(petHud.stage)       // Prioritas 1: UI Tombol & HUD
-        multiplexer.addProcessor(touchController)   // Prioritas 2: Raycast 3D Karakter
+        multiplexer.addProcessor(petHud.stage)
+        multiplexer.addProcessor(touchController)
         Gdx.input.inputProcessor = multiplexer
 
         // ==========================================
@@ -220,12 +190,12 @@ class PetScreen(
     }
 
     private fun getHeadScreenPos(): Vector3 {
-        tempVec3.set(0f, 1.15f, 0f)
+        tempVec3.set(0f, 1.55f, 0f)
         return camera.project(tempVec3)
     }
 
     private fun getBellyScreenPos(): Vector3 {
-        tempVec3.set(0f, 0.65f, 0f)
+        tempVec3.set(0f, 0.85f, 0f)
         return camera.project(tempVec3)
     }
 
@@ -245,13 +215,13 @@ class PetScreen(
             petStateManager.sleep()
             if (petStateManager.isSleeping) {
                 pet.playSleeping()
-                targetLightIntensity = 0.35f
-                targetAmbient = 0.12f
+                targetLightIntensity = 0.40f
+                targetAmbient = 0.18f
                 petHud.showSubtitle("Lampu dimatikan... Zzz... Koceng Oren tidur pulas.", 2.5f)
             } else {
                 pet.wakeUp()
-                targetLightIntensity = 2.5f
-                targetAmbient = 0.6f
+                targetLightIntensity = 2.6f
+                targetAmbient = 0.72f
                 petHud.showSubtitle("Lampu dinyalakan! Hoam... Koceng Oren bangun!", 2.5f)
             }
         }
@@ -271,7 +241,6 @@ class PetScreen(
             isAiMode = !isAiMode
             petHud.setMode(isAiMode)
 
-            // Anti-bentrok Mikrofon
             if (isAiMode) {
                 voiceBridge.stopListening()
                 aiChatBridge.stopAll()
@@ -363,41 +332,230 @@ class PetScreen(
         sunLight.intensity = currentLightIntensity
         sceneManager.setAmbientLight(currentAmbient)
 
-        val targetClearColor = if (petStateManager.isSleeping) nightClearColor else dayClearColor
-        currentClearColor.lerp(targetClearColor, lightLerp)
+        val targetTint = if (petStateManager.isSleeping) nightBackdropTint else dayBackdropTint
+        currentBackdropTint.lerp(targetTint, lightLerp)
 
         // 4. Efek Kamera Subtle Zoom saat Berbicara atau Bereaksi
         val shouldZoom = pet.currentState == PetState.TALKING ||
-                         pet.currentState == PetState.DIZZY ||
-                         pet.currentState == PetState.LAUGHING ||
-                         pet.currentState == PetState.LISTENING
+                       pet.currentState == PetState.DIZZY ||
+                       pet.currentState == PetState.LAUGHING ||
+                       pet.currentState == PetState.LISTENING
         targetCameraPos.set(if (shouldZoom) zoomCameraPos else defaultCameraPos)
         camera.position.lerp(targetCameraPos, delta * 3.0f)
-        camera.lookAt(0f, 0.95f, 0f)
+        camera.lookAt(0f, cameraLookAtY, 0f)
         camera.update()
 
-        // 5. Update animasi karakter (Klip GLB + Animasi Prosedural)
+        // 5. Update animasi karakter
         pet.update(delta)
 
-        // 6. Clear buffer warna dan kedalaman
+        // 6. Clear buffer warna & kedalaman
+        val w = Gdx.graphics.width.toFloat()
+        val h = Gdx.graphics.height.toFloat()
         Gdx.gl.glViewport(0, 0, Gdx.graphics.width, Gdx.graphics.height)
-        Gdx.gl.glClearColor(currentClearColor.r, currentClearColor.g, currentClearColor.b, currentClearColor.a)
+        Gdx.gl.glClearColor(0.35f, 0.65f, 0.85f, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
 
-        // 7. RENDER LAYER 1: 3D Scene PBR (Lantai, Dinding, & Karakter Kucing)
+        // 7. RENDER LAYER 0: Latar Belakang Ruangan Kartun 2D
+        backdropBatch.projectionMatrix.setToOrtho2D(0f, 0f, w, h)
+        backdropBatch.color = currentBackdropTint
+        backdropBatch.begin()
+        backdropBatch.draw(roomBackdropTexture, 0f, 0f, w, h)
+        backdropBatch.end()
+
+        // Reset depth buffer agar model 3D kucing selalu tampil di atas backdrop
+        Gdx.gl.glClear(GL20.GL_DEPTH_BUFFER_BIT)
+
+        // 8. RENDER LAYER 1: 3D Scene PBR (Karakter Kucing)
         sceneManager.update(delta)
         sceneManager.render()
 
-        // 8. RENDER LAYER 2: Efek Partikel Visual Prosedural
-        particleOverlay.render(delta, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
+        // 9. RENDER LAYER 2: Efek Partikel Visual Prosedural
+        particleOverlay.render(delta, w, h)
 
-        // 9. RENDER LAYER 3: 2D Scene2D UI (HUD, Subtitle, & Tombol)
+        // 10. RENDER LAYER 3: 2D Scene2D UI (HUD, Subtitle, & Tombol)
         petHud.render(delta)
     }
 
     override fun resize(width: Int, height: Int) {
         sceneManager.updateViewport(width.toFloat(), height.toFloat())
         petHud.resize(width, height)
+    }
+
+    // --- Generator Latar Belakang Ruangan Kartun Hangat (Tanpa Aset Eksternal) ---
+    private fun createCartoonRoomTexture(): Texture {
+        val w = 540
+        val h = 960
+        val pm = Pixmap(w, h, Pixmap.Format.RGBA8888)
+        pm.blending = Pixmap.Blending.SourceOver
+
+        fun fillVGrad(x: Int, y: Int, rw: Int, rh: Int, top: Color, bottom: Color) {
+            val c = Color()
+            for (dy in 0 until rh) {
+                val t = dy.toFloat() / (rh - 1).coerceAtLeast(1)
+                c.set(top).lerp(bottom, t)
+                pm.setColor(c)
+                pm.fillRectangle(x, y + dy, rw, 1)
+            }
+        }
+
+        fun fillRoundRect(x: Int, y: Int, rw: Int, rh: Int, r: Int, color: Color) {
+            val rad = r.coerceAtMost(minOf(rw, rh) / 2)
+            pm.setColor(color)
+            pm.fillRectangle(x + rad, y, rw - 2 * rad, rh)
+            pm.fillRectangle(x, y + rad, rw, rh - 2 * rad)
+            pm.fillCircle(x + rad, y + rad, rad)
+            pm.fillCircle(x + rw - rad - 1, y + rad, rad)
+            pm.fillCircle(x + rad, y + rh - rad - 1, rad)
+            pm.fillCircle(x + rw - rad - 1, y + rh - rad - 1, rad)
+        }
+
+        val wallBottomY = (h * 0.65f).toInt()
+        val ceilingH = (h * 0.11f).toInt()
+        val cornerX = (w * 0.44f).toInt()
+
+        // 1. Langit-langit krem hangat
+        fillVGrad(0, 0, w, ceilingH, Color(0.95f, 0.90f, 0.82f, 1f), Color(0.89f, 0.82f, 0.72f, 1f))
+
+        // 2. Dinding biru kartun (kiri sedikit lebih teduh, kanan lebih cerah)
+        fillVGrad(0, ceilingH, cornerX, wallBottomY - ceilingH, Color(0.36f, 0.69f, 0.89f, 1f), Color(0.45f, 0.77f, 0.93f, 1f))
+        fillVGrad(cornerX, ceilingH, w - cornerX, wallBottomY - ceilingH, Color(0.44f, 0.75f, 0.93f, 1f), Color(0.55f, 0.83f, 0.96f, 1f))
+
+        // Garis sudut dinding & lis plafon
+        pm.setColor(0.28f, 0.56f, 0.76f, 0.45f)
+        pm.fillRectangle(cornerX - 2, ceilingH, 4, wallBottomY - ceilingH)
+        pm.setColor(0.84f, 0.76f, 0.66f, 1f)
+        pm.fillRectangle(0, ceilingH - 4, w, 7)
+
+        // 3. Jendela kiri (langit cerah, awan, pohon hijau)
+        val winX = 52
+        val winY = ceilingH + 54
+        val winW = 156
+        val winH = 210
+        pm.setColor(0.24f, 0.48f, 0.66f, 0.35f)
+        pm.fillRectangle(winX + 6, winY + 8, winW, winH)
+        fillRoundRect(winX - 8, winY - 8, winW + 16, winH + 16, 10, Color(0.96f, 0.95f, 0.92f, 1f))
+        fillVGrad(winX + 4, winY + 4, winW - 8, winH - 8, Color(0.48f, 0.82f, 0.98f, 1f), Color(0.82f, 0.95f, 1f, 1f))
+        // Awan putih
+        pm.setColor(1f, 1f, 1f, 0.92f)
+        pm.fillCircle(winX + 46, winY + 56, 18)
+        pm.fillCircle(winX + 66, winY + 50, 22)
+        pm.fillCircle(winX + 88, winY + 58, 16)
+        // Pohon hijau di luar jendela
+        pm.setColor(0.45f, 0.78f, 0.34f, 1f)
+        pm.fillCircle(winX + 36, winY + winH - 28, 36)
+        pm.fillCircle(winX + 90, winY + winH - 18, 42)
+        pm.fillCircle(winX + 135, winY + winH - 34, 30)
+        // Palang bingkai jendela
+        pm.setColor(0.96f, 0.95f, 0.92f, 1f)
+        pm.fillRectangle(winX + winW / 2 - 5, winY, 10, winH)
+        pm.fillRectangle(winX, winY + winH / 2 - 5, winW, 10)
+        // Batang gorden kayu
+        fillRoundRect(winX - 18, winY - 26, winW + 36, 10, 5, Color(0.76f, 0.52f, 0.28f, 1f))
+
+        // 4. Jendela kanan
+        val rWinX = w - 132
+        val rWinY = ceilingH + 68
+        val rWinW = 140
+        val rWinH = 200
+        fillRoundRect(rWinX - 8, rWinY - 8, rWinW + 16, rWinH + 16, 10, Color(0.96f, 0.95f, 0.92f, 1f))
+        fillVGrad(rWinX + 4, rWinY + 4, rWinW - 8, rWinH - 8, Color(0.50f, 0.84f, 0.98f, 1f), Color(0.84f, 0.96f, 1f, 1f))
+        pm.setColor(0.48f, 0.80f, 0.36f, 1f)
+        pm.fillCircle(rWinX + 44, rWinY + rWinH - 26, 36)
+        pm.fillCircle(rWinX + 102, rWinY + rWinH - 18, 42)
+        pm.setColor(0.96f, 0.95f, 0.92f, 1f)
+        pm.fillRectangle(rWinX + 58, rWinY, 10, rWinH)
+        pm.fillRectangle(rWinX, rWinY + rWinH / 2 - 5, rWinW, 10)
+
+        // 5. Bingkai foto lucu di dinding belakang
+        fun drawFrame(fx: Int, fy: Int, fw: Int, fh: Int, bg: Color, accent: Color) {
+            pm.setColor(0.20f, 0.42f, 0.60f, 0.30f)
+            pm.fillRectangle(fx + 4, fy + 5, fw, fh)
+            fillRoundRect(fx, fy, fw, fh, 6, Color(0.76f, 0.52f, 0.28f, 1f))
+            pm.setColor(bg)
+            pm.fillRectangle(fx + 6, fy + 6, fw - 12, fh - 12)
+            pm.setColor(accent)
+            pm.fillCircle(fx + fw / 2, fy + fh / 2 + 2, (fw - 24) / 2)
+        }
+        drawFrame(cornerX + 46, ceilingH + 86, 54, 56, Color(0.98f, 0.94f, 0.84f, 1f), Color(0.95f, 0.62f, 0.25f, 1f))
+        drawFrame(cornerX + 110, ceilingH + 74, 58, 66, Color(0.95f, 0.97f, 0.92f, 1f), Color(0.65f, 0.52f, 0.44f, 1f))
+        drawFrame(cornerX + 52, ceilingH + 154, 56, 56, Color(0.92f, 0.95f, 0.99f, 1f), Color(0.94f, 0.54f, 0.24f, 1f))
+
+        // 6. Lis kayu bawah dinding (baseboard)
+        pm.setColor(0.94f, 0.93f, 0.90f, 1f)
+        pm.fillRectangle(0, wallBottomY - 16, w, 16)
+        pm.setColor(0.78f, 0.76f, 0.72f, 1f)
+        pm.fillRectangle(0, wallBottomY - 16, w, 2)
+
+        // 7. Lantai kayu hangat + garis papan
+        fillVGrad(0, wallBottomY, w, h - wallBottomY, Color(0.89f, 0.63f, 0.36f, 1f), Color(0.76f, 0.48f, 0.24f, 1f))
+        pm.setColor(0.64f, 0.39f, 0.18f, 0.35f)
+        for (i in 1..6) {
+            val py = wallBottomY + i * ((h - wallBottomY) / 7)
+            pm.fillRectangle(0, py, w, 2)
+        }
+
+        // 8. Lemari kayu & tanaman pot di kiri
+        val cabY = wallBottomY - 98
+        fillRoundRect(-12, cabY, 118, 128, 10, Color(0.76f, 0.50f, 0.27f, 1f))
+        fillRoundRect(-16, cabY - 6, 126, 16, 6, Color(0.84f, 0.58f, 0.34f, 1f))
+        pm.setColor(0.60f, 0.37f, 0.18f, 1f)
+        pm.fillRectangle(8, cabY + 24, 84, 3)
+        pm.fillRectangle(8, cabY + 72, 84, 3)
+        pm.fillCircle(50, cabY + 46, 5)
+        pm.fillCircle(50, cabY + 94, 5)
+        // Pot & daun hijau
+        fillRoundRect(22, cabY - 46, 46, 42, 8, Color(0.84f, 0.42f, 0.22f, 1f))
+        fillRoundRect(18, cabY - 52, 54, 12, 5, Color(0.90f, 0.48f, 0.26f, 1f))
+        pm.setColor(0.32f, 0.68f, 0.25f, 1f)
+        pm.fillCircle(32, cabY - 76, 22)
+        pm.fillCircle(58, cabY - 72, 20)
+        pm.setColor(0.44f, 0.78f, 0.32f, 1f)
+        pm.fillCircle(45, cabY - 94, 24)
+
+        // 9. Sofa krem & bantal warna-warni di kanan
+        val sofaX = w - 165
+        val sofaY = wallBottomY - 82
+        fillRoundRect(sofaX, sofaY, 185, 118, 22, Color(0.90f, 0.81f, 0.70f, 1f))
+        fillRoundRect(sofaX - 12, sofaY + 42, 42, 76, 18, Color(0.86f, 0.76f, 0.64f, 1f))
+        fillRoundRect(sofaX + 18, sofaY + 56, 155, 56, 16, Color(0.94f, 0.86f, 0.76f, 1f))
+        // Bantal oranye & biru
+        fillRoundRect(sofaX + 34, sofaY + 18, 52, 48, 12, Color(0.97f, 0.66f, 0.20f, 1f))
+        fillRoundRect(sofaX + 102, sofaY + 24, 52, 44, 12, Color(0.30f, 0.72f, 0.92f, 1f))
+
+        // 10. Karpet merah hangat di tengah ruangan (perspektif trapesium)
+        val rugTopY = wallBottomY + 26
+        val rugBotY = (h * 0.89f).toInt()
+        for (ry in rugTopY..rugBotY) {
+            val t = (ry - rugTopY).toFloat() / (rugBotY - rugTopY).coerceAtLeast(1)
+            val halfW = MathUtils.lerp(w * 0.34f, w * 0.56f, t).toInt()
+            val rx = w / 2 - halfW
+            // Bayangan tepi karpet
+            pm.setColor(0.45f, 0.20f, 0.10f, 0.35f)
+            pm.fillRectangle(rx - 4, ry + 4, halfW * 2 + 8, 2)
+            // Warna karpet merah gradien
+            val rCol = MathUtils.lerp(0.84f, 0.74f, t)
+            val gCol = MathUtils.lerp(0.18f, 0.13f, t)
+            val bCol = MathUtils.lerp(0.18f, 0.14f, t)
+            pm.setColor(rCol, gCol, bCol, 1f)
+            pm.fillRectangle(rx, ry, halfW * 2, 2)
+        }
+
+        // 11. Bayangan lembut di bawah kaki kucing
+        val shadowCx = w / 2
+        val shadowCy = (h * 0.74f).toInt()
+        for (sy in -26..26) {
+            val ny = sy / 26f
+            val halfW = (92f * kotlin.math.sqrt((1f - ny * ny).coerceAtLeast(0f))).toInt()
+            val alpha = 0.26f * (1f - ny * ny)
+            pm.setColor(0.25f, 0.05f, 0.05f, alpha)
+            pm.fillRectangle(shadowCx - halfW, shadowCy + sy, halfW * 2, 1)
+        }
+
+        val tex = Texture(pm).apply {
+            setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+        }
+        pm.dispose()
+        return tex
     }
 
     // --- Callback Voice Mimic (Mode Tiru Suara) ---
@@ -480,8 +638,8 @@ class PetScreen(
         sfx.dispose()
         particleOverlay.dispose()
         pet.dispose()
-        floorModel?.dispose()
-        wallModel?.dispose()
+        backdropBatch.dispose()
+        roomBackdropTexture.dispose()
         sceneManager.dispose()
         petHud.dispose()
     }
