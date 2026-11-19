@@ -1,6 +1,8 @@
 package com.koceng.oren.character
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.g3d.model.Node
+import com.badlogic.gdx.math.Quaternion
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.math.collision.BoundingBox
@@ -59,6 +61,11 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     private var dizzyTimer: Float = 0f
     private var laughTimer: Float = 0f
     private var eatTimer: Float = 0f
+private val headNodes = mutableListOf<Node>()
+private val jawNodes = mutableListOf<Node>()
+private val leftArmNodes = mutableListOf<Node>()
+private val rightArmNodes = mutableListOf<Node>()
+private val talkQuat = Quaternion()
 
     // Listener untuk transisi kembali ke IDLE saat animasi GLB one-shot selesai
     private val reactionListener = object : AnimationController.AnimationListener {
@@ -112,6 +119,32 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
 
         // Mainkan animasi awal (Idle)
         playIdle()
+        collectUpperBodyNodes(scene.modelInstance.nodes)
+    }
+
+    private fun collectUpperBodyNodes(nodes: Iterable<Node>) {
+        for (node in nodes) {
+            val id = node.id.lowercase()
+            val isLowerBody = id.contains("leg") || id.contains("thigh") || id.contains("calf") ||
+                id.contains("foot") || id.contains("toe") || id.contains("hip") || id.contains("pelvis")
+            if (!isLowerBody) {
+                when {
+                    id.contains("jaw") || id.contains("mouth") -> jawNodes.add(node)
+                    id.contains("head") || id.contains("neck") -> headNodes.add(node)
+                    id.contains("arm") || id.contains("shoulder") || id.contains("forearm") ||
+                        id.contains("hand") || id.contains("clavicle") -> {
+                        if (id.contains("left") || id.contains("_l") || id.contains(".l")) {
+                            leftArmNodes.add(node)
+                        } else if (id.contains("right") || id.contains("_r") || id.contains(".r")) {
+                            rightArmNodes.add(node)
+                        }
+                    }
+                }
+            }
+            if (node.hasChildren()) {
+                collectUpperBodyNodes(node.children)
+            }
+        }
     }
 
     private fun findAnimation(available: Set<String>, candidates: List<String>): String {
@@ -150,8 +183,43 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
         // 2. Animasi Transformasi Prosedural (Skala, Rotasi, Posisi)
         applyProceduralAnimation()
 
+        if (currentState == PetState.TALKING) {
+            applyTalkingUpperBodyGestures()
+        }
         // 3. Update Bounding Box di World Coordinates
         updateWorldBounds()
+    }
+
+    private fun applyTalkingUpperBodyGestures() {
+        val headPitch = sin(stateTime * 4.5f) * 5f + sin(stateTime * 2.1f) * 2.5f
+        val headYaw = sin(stateTime * 2.8f) * 6f
+        val headRoll = cos(stateTime * 3.2f) * 3f
+        talkQuat.setEulerAngles(headYaw, headPitch, headRoll)
+        for (node in headNodes) {
+            node.rotation.mul(talkQuat)
+        }
+
+        val jawOpen = (sin(stateTime * 11f) * 0.5f + 0.5f) * 14f
+        talkQuat.setEulerAngles(0f, jawOpen, 0f)
+        for (node in jawNodes) {
+            node.rotation.mul(talkQuat)
+        }
+
+        val leftArmPitch = sin(stateTime * 4.2f) * 14f
+        val leftArmRoll = cos(stateTime * 3.1f) * 8f
+        talkQuat.setEulerAngles(0f, leftArmPitch, leftArmRoll)
+        for (node in leftArmNodes) {
+            node.rotation.mul(talkQuat)
+        }
+
+        val rightArmPitch = -sin(stateTime * 4.2f) * 14f
+        val rightArmRoll = -cos(stateTime * 3.1f) * 8f
+        talkQuat.setEulerAngles(0f, rightArmPitch, rightArmRoll)
+        for (node in rightArmNodes) {
+            node.rotation.mul(talkQuat)
+        }
+
+        scene.modelInstance.calculateTransforms()
     }
 
     /**
@@ -182,11 +250,12 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
                 scaleY = 1.02f
             }
             PetState.TALKING -> {
-                // Gerakan memantul/mengangguk ritmis saat berbicara
-                val bounce = abs(sin(stateTime * 11.0f)) * 0.04f
-                posY = bounce
-                rotX = sin(stateTime * 11.0f) * 4.5f
-                scaleY = 1.0f + 0.03f * sin(stateTime * 11.0f)
+                posY = 0f
+                rotX = 0f
+                rotZ = 0f
+                scaleX = 1f
+                scaleY = 1f
+                scaleZ = 1f
             }
             PetState.DIZZY -> {
                 // Goyangan rotasi sumbu Z cepat + squash & stretch
@@ -246,10 +315,10 @@ class PetCharacter(glbFilePath: String = "models/cartoon_cat.glb") : Disposable 
     }
 
     fun playTalking() {
-        if (currentState == PetState.DIZZY || currentState == PetState.LAUGHING || currentState == PetState.SLEEPING) return
+        if (currentState == PetState.SLEEPING) return
         currentState = PetState.TALKING
-        if (animTalkingName.isNotEmpty()) {
-            scene.animationController.animate(animTalkingName, -1, 1.2f, null, 0.15f)
+        if (animIdleName.isNotEmpty()) {
+            scene.animationController.animate(animIdleName, -1, 1f, null, 0.25f)
         }
     }
 
