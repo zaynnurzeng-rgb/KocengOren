@@ -33,8 +33,8 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
 
     companion object {
         private const val GEMINI_HOST = "generativelanguage.googleapis.com"
-        private const val GEMINI_CHAT_MODEL = "gemini-3.8-flash"
-        private const val GEMINI_TTS_MODEL = "gemini-3.8-flash-tts"
+        private const val GEMINI_CHAT_MODEL = "gemini-3.5-flash-lite"
+        private const val GEMINI_TTS_MODEL = "gemini-3.8-flash-lite-tts"
         private const val GEMINI_VOICE_NAME = "Puck"
         private const val PCM_SAMPLE_RATE = 24000
         private const val UTTERANCE_ID = "koceng_oren_fallback_tts"
@@ -270,7 +270,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
     }
 
     private fun requestGeminiAi(userText: String) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = BuildConfig.GEMINI_API_KEY.trim()
         if (apiKey.isBlank()) {
             val fallback = "Woy! GEMINI_API_KEY belum masuk di GitHub Secrets tuh. Pasang dulu baru ajak gue ngobrol!"
             notifyReply(fallback)
@@ -317,7 +317,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             connectTimeout = 15000
-            readTimeout = 25000
+            readTimeout = 45000
             doOutput = true
         }
 
@@ -402,7 +402,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 connectTimeout = 15000
-                readTimeout = 25000
+                readTimeout = 45000
                 doOutput = true
             }
 
