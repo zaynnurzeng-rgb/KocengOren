@@ -24,4 +24,5 @@ interface AiChatBridge {
     fun stopAll()
     fun isBusy(): Boolean
     fun resetChatHistory()
+    fun speakText(text: String)
 }
