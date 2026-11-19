@@ -17,7 +17,10 @@ enum class ParticleType {
     HEART,
     STAR,
     CRUMB,
-    ZZZ
+    ZZZ,
+    QUESTION,
+    IDEA,
+    ANNOYED
 }
 
 class PetParticle {
@@ -51,11 +54,15 @@ class PetParticleOverlay : Disposable {
     private val starRegion: TextureRegion
     private val crumbRegion: TextureRegion
     private val zzzFont: BitmapFont
-
+    private val ideaRegion: TextureRegion
+    private val annoyedRegion: TextureRegion
+    
     private val heartTexture: Texture
     private val starTexture: Texture
     private val crumbTexture: Texture
-
+    private val ideaTexture: Texture
+    private val annoyedTexture: Texture
+    
     private val projectionMatrix = Matrix4()
 
     init {
@@ -98,7 +105,51 @@ class PetParticleOverlay : Disposable {
         crumbPixmap.dispose()
         crumbRegion = TextureRegion(crumbTexture)
 
-        // 4. Font untuk teks partikel Zzz
+        // 5. Gambar tekstur bola lampu ide prosedural (32x32)
+     val ideaPixmap = Pixmap(32, 32, Pixmap.Format.RGBA8888).apply {
+            setColor(0f, 0f, 0f, 0f)
+            fill()
+            // Bohlam kuning keemasan terang
+            setColor(1f, 0.85f, 0.1f, 1f)
+            fillCircle(16, 12, 9)
+            fillRectangle(12, 18, 8, 5)
+            // Kilau terang di dalam bohlam
+            setColor(1f, 0.98f, 0.65f, 1f)
+            fillCircle(14, 10, 4)
+            // Pangkal abu-abu
+            setColor(0.55f, 0.58f, 0.62f, 1f)
+            fillRectangle(12, 23, 8, 4)
+            setColor(0.4f, 0.43f, 0.47f, 1f)
+            fillRectangle(13, 27, 6, 2)
+        }
+        ideaTexture = Texture(ideaPixmap)
+        ideaPixmap.dispose()
+        ideaRegion = TextureRegion(ideaTexture)
+
+        // 6. Gambar tekstur simbol kesal/urat marah prosedural (32x32)
+        val annoyedPixmap = Pixmap(32, 32, Pixmap.Format.RGBA8888).apply {
+            setColor(0f, 0f, 0f, 0f)
+            fill()
+            // 4 sudut siku merah menyala mengarah ke tengah
+            setColor(0.95f, 0.15f, 0.15f, 1f)
+            // Kiri atas
+            fillRectangle(4, 9, 8, 3)
+            fillRectangle(9, 4, 3, 8)
+            // Kanan atas
+            fillRectangle(20, 9, 8, 3)
+            fillRectangle(20, 4, 3, 8)
+            // Kiri bawah
+            fillRectangle(4, 20, 8, 3)
+            fillRectangle(9, 20, 3, 8)
+            // Kanan bawah
+            fillRectangle(20, 20, 8, 3)
+            fillRectangle(20, 20, 3, 8)
+        }
+        annoyedTexture = Texture(annoyedPixmap)
+        annoyedPixmap.dispose()
+        annoyedRegion = TextureRegion(annoyedTexture)
+        
+         // 4. Font untuk teks partikel Zzz
         zzzFont = BitmapFont().apply {
             data.setScale(1.2f)
         }
@@ -206,6 +257,80 @@ class PetParticleOverlay : Disposable {
         particles.add(p)
     }
 
+
+    /**
+     * Muncul tanda tanya "?" besar melayang dengan goyangan lembut berwarna kuning cerah
+     */
+    fun spawnQuestionMarks(centerX: Float, centerY: Float, count: Int = 2) {
+        for (i in 0 until count) {
+            val p = obtainParticle().apply {
+                type = ParticleType.QUESTION
+                x = centerX + MathUtils.random(-28f, 28f)
+                y = centerY + MathUtils.random(-10f, 15f)
+                initialX = x
+                vx = MathUtils.random(-15f, 15f)
+                vy = MathUtils.random(45f, 70f)
+                rotation = MathUtils.random(-10f, 10f)
+                rotSpeed = MathUtils.random(-15f, 15f)
+                scale = MathUtils.random(1.0f, 1.25f)
+                maxLife = MathUtils.random(1.4f, 1.9f)
+                life = maxLife
+                alpha = 1f
+                wobbleSpeed = 3.5f
+                color.set(1.0f, 0.92f, 0.15f, 1f)
+            }
+            particles.add(p)
+        }
+    }
+
+    /**
+     * Muncul bola lampu ide naik lembut dengan cahaya emas di atas kepala kucing
+     */
+    fun spawnIdeaBulbs(centerX: Float, centerY: Float, count: Int = 3) {
+        for (i in 0 until count) {
+            val p = obtainParticle().apply {
+                type = ParticleType.IDEA
+                x = centerX + MathUtils.random(-35f, 35f)
+                y = centerY + MathUtils.random(-10f, 20f)
+                initialX = x
+                vx = MathUtils.random(-18f, 18f)
+                vy = MathUtils.random(45f, 75f)
+                rotation = MathUtils.random(-8f, 8f)
+                rotSpeed = MathUtils.random(-12f, 12f)
+                scale = MathUtils.random(0.85f, 1.15f)
+                maxLife = MathUtils.random(1.3f, 1.8f)
+                life = maxLife
+                alpha = 1f
+                wobbleSpeed = 2.5f
+                color.set(1.0f, 0.92f, 0.45f, 1f)
+            }
+            particles.add(p)
+        }
+    }
+
+    /**
+     * Muncul simbol kesal merah melompat cepat di sekitar kepala kucing saat dicolek
+     */
+    fun spawnAngerMarks(centerX: Float, centerY: Float, count: Int = 3) {
+        for (i in 0 until count) {
+            val p = obtainParticle().apply {
+                type = ParticleType.ANNOYED
+                x = centerX + MathUtils.random(-40f, 40f)
+                y = centerY + MathUtils.random(-15f, 25f)
+                initialX = x
+                vx = MathUtils.random(-70f, 70f)
+                vy = MathUtils.random(80f, 140f)
+                rotation = MathUtils.random(-20f, 20f)
+                rotSpeed = MathUtils.random(-60f, 60f)
+                scale = MathUtils.random(0.85f, 1.15f)
+                maxLife = MathUtils.random(0.65f, 0.95f)
+                life = maxLife
+                alpha = 1f
+                color.set(1.0f, 0.25f, 0.25f, 1f)
+            }
+            particles.add(p)
+        }
+    }
     fun render(delta: Float, screenWidth: Float, screenHeight: Float) {
         if (particles.size == 0) return
 
@@ -249,6 +374,22 @@ class PetParticleOverlay : Disposable {
                     p.x += p.vx * delta + sin(progress * MathUtils.PI2) * 8f * delta
                     p.y += p.vy * delta
                 }
+                ParticleType.QUESTION -> {
+                    p.y += p.vy * delta
+                    p.x = p.initialX + sin(progress * MathUtils.PI2 * p.wobbleSpeed) * 12f
+                    p.rotation += p.rotSpeed * delta
+                }
+                ParticleType.IDEA -> {
+                    p.y += p.vy * delta
+                    p.x = p.initialX + sin(progress * MathUtils.PI2 * p.wobbleSpeed) * 8f
+                    p.rotation += p.rotSpeed * delta
+                }
+                ParticleType.ANNOYED -> {
+                    p.x += p.vx * delta
+                    p.y += p.vy * delta
+                    p.vy -= 260f * delta
+                    p.rotation += p.rotSpeed * delta
+                }
             }
 
             // Gambar partikel
@@ -276,6 +417,23 @@ class PetParticleOverlay : Disposable {
                     zzzFont.data.setScale(1.1f * p.scale)
                     zzzFont.draw(batch, "Zzz", p.x, p.y)
                 }
+                ParticleType.QUESTION -> {
+                    zzzFont.color.set(p.color.r, p.color.g, p.color.b, p.alpha)
+                    zzzFont.data.setScale(1.8f * p.scale)
+                    zzzFont.draw(batch, "?", p.x, p.y)
+                }
+                ParticleType.IDEA -> {
+                    batch.setColor(p.color.r, p.color.g, p.color.b, p.alpha)
+                    val w = ideaRegion.regionWidth * p.scale
+                    val h = ideaRegion.regionHeight * p.scale
+                    batch.draw(ideaRegion, p.x - w / 2, p.y - h / 2, w / 2, h / 2, w, h, 1f, 1f, p.rotation)
+                }
+                ParticleType.ANNOYED -> {
+                    batch.setColor(p.color.r, p.color.g, p.color.b, p.alpha)
+                    val w = annoyedRegion.regionWidth * p.scale
+                    val h = annoyedRegion.regionHeight * p.scale
+                    batch.draw(annoyedRegion, p.x - w / 2, p.y - h / 2, w / 2, h / 2, w, h, 1f, 1f, p.rotation)
+                }
             }
         }
 
@@ -288,6 +446,8 @@ class PetParticleOverlay : Disposable {
         heartTexture.dispose()
         starTexture.dispose()
         crumbTexture.dispose()
+        ideaTexture.dispose()
+        annoyedTexture.dispose()
         zzzFont.dispose()
         particles.clear()
         pool.clear()
