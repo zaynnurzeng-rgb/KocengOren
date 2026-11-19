@@ -42,9 +42,9 @@ class PetScreen(
     private lateinit var roomBackdropTexture: Texture
 
     // Efek Kamera (Jarak ideal agar seluruh tubuh kucing terlihat utuh)
-    private val defaultCameraPos = Vector3(0f, 1.45f, 4.65f)
-    private val zoomCameraPos = Vector3(0f, 1.38f, 4.10f)
-    private val cameraLookAtY = 1.05f
+    private val defaultCameraPos = Vector3(0f, 1.40f, 5.20f)
+    private val zoomCameraPos = Vector3(0f, 1.35f, 4.65f)
+    private val cameraLookAtY = 0.88f
     private val targetCameraPos = Vector3(defaultCameraPos)
     private val tempVec3 = Vector3()
 
@@ -111,13 +111,13 @@ class PetScreen(
                     sfx.playPoke()
                     val headPos = getHeadScreenPos()
                     particleOverlay.spawnStars(headPos.x, headPos.y)
-                    petHud.showReply("Woy! Jangan colek-colek kepala gue, nggak sopan banget sih lu!")
+                    if (!aiChatBridge.isBusy()) petHud.showReply("Woy! Jangan colek-colek kepala gue, nggak sopan banget sih lu!")
                 }
                 HitZone.BELLY -> {
                     sfx.playPurr()
                     val bellyPos = getBellyScreenPos()
                     particleOverlay.spawnHearts(bellyPos.x, bellyPos.y)
-                    petHud.showReply("Apaan sih pegang-pegang perut gue? Geli woy, minggir sana!")
+                    if (!aiChatBridge.isBusy()) petHud.showReply("Apaan sih pegang-pegang perut gue? Geli woy, minggir sana!")
                 }
                 HitZone.NONE -> {}
             }
