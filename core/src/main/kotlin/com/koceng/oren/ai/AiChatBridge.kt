@@ -33,4 +33,6 @@ interface AiChatBridge {
     fun openChatHistoryDialog()
     fun openSettingsDialog()
     fun getSavedRoomTheme(): RoomTheme
-}
+    val useNativeHud: Boolean
+    fun updateNativeBubble(userText: String?, replyText: String)
+}    
