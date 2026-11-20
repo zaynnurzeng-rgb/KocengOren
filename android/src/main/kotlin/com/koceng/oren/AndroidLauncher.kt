@@ -2,6 +2,7 @@ package com.koceng.oren
 
 import android.os.Bundle
 import android.content.Intent
+import android.widget.FrameLayout
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import com.koceng.oren.ai.AndroidAiChatBridge
@@ -32,7 +33,24 @@ class AndroidLauncher : AndroidApplication() {
         voiceBridge = AndroidVoiceMimicBridge(this)
         aiChatBridge = AndroidAiChatBridge(this)
 
-        initialize(KocengOrenGame(voiceBridge, aiChatBridge), config)
+        val gdxView = initializeForView(KocengOrenGame(voiceBridge, aiChatBridge), config)
+        val rootLayout = FrameLayout(this).apply {
+            addView(
+                gdxView,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                aiChatBridge.createNativeHudOverlay(),
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        setContentView(rootLayout)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
