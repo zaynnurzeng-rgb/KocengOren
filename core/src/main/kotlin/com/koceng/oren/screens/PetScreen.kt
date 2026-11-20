@@ -157,7 +157,7 @@ class PetScreen(
         // 7. InputMultiplexer (UI diprioritaskan pertama)
         // ==========================================
         val multiplexer = InputMultiplexer()
-        multiplexer.addProcessor(petHud.stage)
+        if (!aiChatBridge.useNativeHud) multiplexer.addProcessor(petHud.stage)
         multiplexer.addProcessor(touchController)
         Gdx.input.inputProcessor = multiplexer
 
@@ -190,7 +190,7 @@ class PetScreen(
         return camera.project(tempVec3)
     }
     private fun showAndSpeak(text: String) {
-        petHud.showReply(text)
+        if (aiChatBridge.useNativeHud) aiChatBridge.updateNativeBubble(null, text) else petHud.showReply(text)
         aiChatBridge.speakText(text)
     }
     
@@ -264,7 +264,7 @@ class PetScreen(
 
         aiChatBridge.onReplyText = { reply ->
             petHud.showReply(reply)
-        if (isHomeworkMode) { val hp = getHeadScreenPos(); particleOverlay.spawnIdeaBulbs(hp.x, hp.y + 30f) }
+        if (isHomeworkMode || reply.contains("Jawaban akhir", ignoreCase = true)) { val hp = getHeadScreenPos(); particleOverlay.spawnIdeaBulbs(hp.x, hp.y + 30f) }
         }
 
         aiChatBridge.onSpeakingStateChanged = { isSpeaking ->
@@ -325,7 +325,7 @@ class PetScreen(
         particleOverlay.render(delta, w, h)
 
         // 7. RENDER LAYER 3: 2D Scene2D UI (HUD AI Pet)
-        petHud.render(delta)
+        if (!aiChatBridge.useNativeHud) petHud.render(delta)
     }
 
     override fun resize(width: Int, height: Int) {
