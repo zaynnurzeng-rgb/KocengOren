@@ -8,6 +8,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.View
+import android.widget.Button
 import android.provider.MediaStore
 import android.widget.ScrollView
 import android.widget.TextView
@@ -212,41 +219,183 @@ private const val PREFS_NAME = "koceng_oren_prefs"
             }
         }
     }
+    private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
+        private fun buildCartoonCardContainer(title: String): Pair<LinearLayout, LinearLayout> {
+val card = LinearLayout(activity).apply {
+orientation = LinearLayout.VERTICAL
+setPadding(dp(20), dp(20), dp(20), dp(20))
+background = GradientDrawable().apply {
+cornerRadius = dp(24).toFloat()
+setColor(Color.parseColor("#FFFBF0"))
+setStroke(dp(3), Color.parseColor("#52290F"))
+}
+}
+val titleView = TextView(activity).apply {
+text = title
+textSize = 19f
+setTypeface(null, Typeface.BOLD)
+setTextColor(Color.parseColor("#52290F"))
+setPadding(0, 0, 0, dp(10))
+}
+card.addView(titleView)
+val divider = View(activity).apply {
+setBackgroundColor(Color.parseColor("#EADBC8"))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+dp(1)
+).apply {
+bottomMargin = dp(14)
+}
+}
+card.addView(divider)
+val content = LinearLayout(activity).apply {
+orientation = LinearLayout.VERTICAL
+}
+card.addView(content)
+return Pair(card, content)
+}
+
+private fun createCartoonButton(text: String, isPrimary: Boolean, onClick: () -> Unit): Button {
+return Button(activity).apply {
+this.text = text
+isAllCaps = false
+textSize = 14f
+setTypeface(null, if (isPrimary) Typeface.BOLD else Typeface.NORMAL)
+setTextColor(if (isPrimary) Color.WHITE else Color.parseColor("#52290F"))
+background = GradientDrawable().apply {
+cornerRadius = dp(18).toFloat()
+setColor(Color.parseColor(if (isPrimary) "#FF8C1A" else "#EFE4D4"))
+}
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+dp(44)
+)
+setOnClickListener { onClick() }
+}
+}
+
+private fun showCustomDialog(card: LinearLayout): AlertDialog {
+val dialog = AlertDialog.Builder(activity)
+.setView(card)
+.create()
+dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+dialog.show()
+return dialog
+}
+
+private fun showCartoonOptionListDialog(
+title: String,
+items: Array<String>,
+selectedIndex: Int = -1,
+onSelect: (Int) -> Unit
+) {
+val (card, content) = buildCartoonCardContainer(title)
+var dialogRef: AlertDialog? = null
+items.forEachIndexed { i, label ->
+val isSelected = selectedIndex == i
+val btn = Button(activity).apply {
+text = if (isSelected) "$label ✓" else label
+isAllCaps = false
+textSize = 14f
+gravity = Gravity.START or Gravity.CENTER_VERTICAL
+setPadding(dp(16), 0, dp(16), 0)
+setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+setTextColor(if (isSelected) Color.WHITE else Color.parseColor("#52290F"))
+background = GradientDrawable().apply {
+cornerRadius = dp(18).toFloat()
+if (isSelected) {
+setColor(Color.parseColor("#FF8C1A"))
+} else {
+setColor(Color.parseColor("#FFF3DC"))
+setStroke(dp(1), Color.parseColor("#D8C3A5"))
+}
+}
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+dp(44)
+).apply {
+bottomMargin = dp(8)
+}
+setOnClickListener {
+dialogRef?.dismiss()
+onSelect(i)
+}
+}
+content.addView(btn)
+}
+val cancelBtn = createCartoonButton("Batal", false) {
+dialogRef?.dismiss()
+}.apply {
+(layoutParams as LinearLayout.LayoutParams).topMargin = dp(4)
+}
+content.addView(cancelBtn)
+dialogRef = showCustomDialog(card)
+}
 
     override fun openTextInputDialog(isHomework: Boolean) {
         activity.runOnUiThread {
-            val container = LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(48, 24, 48, 8)
-            }
-
-            val input = EditText(activity).apply {
-                hint = if (isHomework) {
-                    "Tulis atau tempel soal PR di sini (misal: 2x + 5 = 15, atau soal IPA/IPS)..."
-                } else {
-                    "Mau ngomong apa sama Koceng Oren?"
-                }
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                minLines = 3
-                maxLines = 6
-            }
-            container.addView(input)
-
             val title = if (isHomework) "Tanya PR Sekolah ke Koceng Oren" else "Chat dengan Koceng Oren"
-            AlertDialog.Builder(activity)
-                .setTitle(title)
-                .setView(container)
-                .setPositiveButton("Kirim") { _, _ ->
-                    val text = input.text.toString().trim()
-                    if (text.isNotEmpty()) {
-                        if (isHomework) {
-                            currentMode = ChatMode.HOMEWORK
-                        }
-                        sendTextMessage(text)
-                    }
-                }
-                .setNegativeButton("Batal", null)
-                .show()
+val (card, content) = buildCartoonCardContainer(title)
+val input = EditText(activity).apply {
+hint = if (isHomework) {
+"Tulis soal PR di sini (Matematika, IPA, B. Inggris, dll)..."
+} else {
+"Ketik pesan buat Koceng Oren..."
+}
+inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+minLines = 3
+maxLines = 6
+gravity = Gravity.TOP or Gravity.START
+setTextColor(Color.parseColor("#52290F"))
+setHintTextColor(Color.parseColor("#9E7E5F"))
+setPadding(dp(14), dp(14), dp(14), dp(14))
+background = GradientDrawable().apply {
+cornerRadius = dp(16).toFloat()
+setColor(Color.parseColor("#FFF5E4"))
+setStroke(dp(1), Color.parseColor("#D8C3A5"))
+}
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply {
+bottomMargin = dp(14)
+}
+}
+content.addView(input)
+
+var dialogRef: AlertDialog? = null
+val btnRow = LinearLayout(activity).apply {
+orientation = LinearLayout.HORIZONTAL
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+)
+}
+val cancelBtn = createCartoonButton("Batal", false) {
+dialogRef?.dismiss()
+}.apply {
+layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+marginEnd = dp(8)
+}
+}
+val sendBtn = createCartoonButton("Kirim", true) {
+val text = input.text.toString().trim()
+if (text.isNotEmpty()) {
+if (isHomework) {
+currentMode = ChatMode.HOMEWORK
+}
+sendTextMessage(text)
+}
+dialogRef?.dismiss()
+}.apply {
+layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+marginStart = dp(8)
+}
+}
+btnRow.addView(cancelBtn)
+btnRow.addView(sendBtn)
+content.addView(btnRow)
+dialogRef = showCustomDialog(card)
         }
     }
 
@@ -609,10 +758,7 @@ private const val PREFS_NAME = "koceng_oren_prefs"
 
     override fun openPhotoHomeworkPicker() {
         activity.runOnUiThread {
-            val options = arrayOf("Ambil Foto (Kamera)", "Pilih dari Galeri (Lebih Tajam)")
-            AlertDialog.Builder(activity)
-                .setTitle("Foto Soal PR")
-                .setItems(options) { _, which ->
+                 showCartoonOptionListDialog("Foto Soal PR", arrayOf("Ambil Foto (Kamera)", "Pilih dari Galeri (Lebih Tajam)")) { which ->
                     try {
                         if (which == 0) {
                             val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
@@ -627,8 +773,6 @@ private const val PREFS_NAME = "koceng_oren_prefs"
                         Toast.makeText(activity, "Gagal membuka foto: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
-                .setNegativeButton("Batal", null)
-                .show()
         }
     }
 
@@ -787,88 +931,107 @@ private const val PREFS_NAME = "koceng_oren_prefs"
                     }
                 }
             }
-            val textView = TextView(activity).apply {
-                text = historyText
-                setTextIsSelectable(true)
-                setPadding(40, 24, 40, 24)
-            }
-            val scrollView = ScrollView(activity).apply {
-                addView(textView)
-            }
-            AlertDialog.Builder(activity)
-                .setTitle("Riwayat Obrolan")
-                .setView(scrollView)
-                .setPositiveButton("Salin Terakhir") { _, _ ->
-                    copyLastReplyToClipboard()
-                }
-                .setNegativeButton("Tutup", null)
-                .show()
+     val (card, content) = buildCartoonCardContainer("Riwayat Obrolan")
+val textView = TextView(activity).apply {
+text = historyText
+setTextIsSelectable(true)
+setTextColor(Color.parseColor("#52290F"))
+textSize = 14f
+setPadding(dp(12), dp(12), dp(12), dp(12))
+}
+val scrollView = ScrollView(activity).apply {
+addView(textView)
+background = GradientDrawable().apply {
+cornerRadius = dp(16).toFloat()
+setColor(Color.parseColor("#FFF5E4"))
+setStroke(dp(1), Color.parseColor("#D8C3A5"))
+}
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+dp(260)
+).apply {
+bottomMargin = dp(14)
+}
+}
+content.addView(scrollView)
+var dialogRef: AlertDialog? = null
+val btnRow = LinearLayout(activity).apply {
+orientation = LinearLayout.HORIZONTAL
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+)
+}
+val copyBtn = createCartoonButton("Salin Terakhir", true) {
+copyLastReplyToClipboard()
+dialogRef?.dismiss()
+}.apply {
+layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+marginEnd = dp(8)
+}
+}
+val closeBtn = createCartoonButton("Tutup", false) {
+dialogRef?.dismiss()
+}.apply {
+layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+marginStart = dp(8)
+}
+}
+btnRow.addView(copyBtn)
+btnRow.addView(closeBtn)
+content.addView(btnRow)
+dialogRef = showCustomDialog(card)
         }
-    }
+    }    override fun openSettingsDialog() {
+activity.runOnUiThread {
+val items = arrayOf("Ganti Suara Gemini", "Atur Level Ketus", "Ganti Tema Ruangan")
+showCartoonOptionListDialog("Pengaturan Koceng Oren", items) { which ->
+when (which) {
+0 -> showVoicePickerDialog()
+1 -> showAttitudePickerDialog()
+2 -> showRoomThemePickerDialog()
+}
+}
+}
+}
 
-    override fun openSettingsDialog() {
-        activity.runOnUiThread {
-            val menuItems = arrayOf("Ganti Suara Gemini", "Atur Level Ketus", "Ganti Tema Ruangan")
-            AlertDialog.Builder(activity)
-                .setTitle("Pengaturan Koceng Oren")
-                .setItems(menuItems) { _, which ->
-                    when (which) {
-                        0 -> {
-                            val voices = arrayOf("Puck", "Fenrir", "Charon", "Aoede", "Kore")
-                            val checked = voices.indexOf(selectedVoiceName).coerceAtLeast(0)
-                            AlertDialog.Builder(activity)
-                                .setTitle("Pilih Suara Gemini")
-                                .setSingleChoiceItems(voices, checked) { dialog, idx ->
-                                    val chosen = voices[idx]
-                                    selectedVoiceName = chosen
-                                    prefs.edit().putString("voice_name", chosen).apply()
-                                    dialog.dismiss()
-                                    Toast.makeText(activity, "Suara diganti ke $chosen", Toast.LENGTH_SHORT).show()
-                                    Thread {
-                                        val apiKey = BuildConfig.GEMINI_API_KEY.trim()
-                                        val sample = "Meow, ini suara $chosen."
-                                        val played = if (apiKey.isNotEmpty()) speakWithGeminiNaturalVoice(apiKey, sample) else false
-                                        if (!played) speakWithFallbackTts(sample)
-                                    }.start()
-                                }
-                                .setNegativeButton("Batal", null)
-                                .show()
-                        }
-                        1 -> {
-                            val levels = arrayOf("Agak Cuek", "Ketus Standar", "Super Bar-Bar")
-                            val checked = attitudeLevel.coerceIn(0, 2)
-                            AlertDialog.Builder(activity)
-                                .setTitle("Atur Level Ketus")
-                                .setSingleChoiceItems(levels, checked) { dialog, idx ->
-                                    attitudeLevel = idx
-                                    prefs.edit().putInt("attitude_level", idx).apply()
-                                    dialog.dismiss()
-                                    Toast.makeText(activity, "Level ketus: ${levels[idx]}", Toast.LENGTH_SHORT).show()
-                                }
-                                .setNegativeButton("Batal", null)
-                                .show()
-                        }
-                        2 -> {
-                            val themeLabels = arrayOf("Siang Cerah", "Malam Lampu Tidur", "Ruang Belajar Hangat")
-                            val themes = arrayOf(RoomTheme.DAY, RoomTheme.NIGHT, RoomTheme.STUDY)
-                            val current = getSavedRoomTheme()
-                            val checked = themes.indexOf(current).coerceAtLeast(0)
-                            AlertDialog.Builder(activity)
-                                .setTitle("Ganti Tema Ruangan")
-                                .setSingleChoiceItems(themeLabels, checked) { dialog, idx ->
-                                    val chosenTheme = themes[idx]
-                                    prefs.edit().putString("room_theme", chosenTheme.name).apply()
-                                    dialog.dismiss()
-                                    Gdx.app?.postRunnable { onRoomThemeChanged?.invoke(chosenTheme) }
-                                    Toast.makeText(activity, "Tema: ${themeLabels[idx]}", Toast.LENGTH_SHORT).show()
-                                }
-                                .setNegativeButton("Batal", null)
-                                .show()
-                        }
-                    }
-                }
-                .setNegativeButton("Tutup", null)
-                .show()
-        }
-    }
+private fun showVoicePickerDialog() {
+val voices = arrayOf("Puck", "Fenrir", "Charon", "Aoede", "Kore")
+val checked = voices.indexOf(selectedVoiceName).coerceAtLeast(0)
+showCartoonOptionListDialog("Pilih Suara Gemini", voices, checked) { idx ->
+val chosen = voices[idx]
+selectedVoiceName = chosen
+prefs.edit().putString("voice_name", chosen).apply()
+Toast.makeText(activity, "Suara diganti ke $chosen", Toast.LENGTH_SHORT).show()
+Thread {
+val apiKey = BuildConfig.GEMINI_API_KEY.trim()
+val sample = "Meow, ini suara $chosen."
+val played = if (apiKey.isNotEmpty()) speakWithGeminiNaturalVoice(apiKey, sample) else false
+if (!played) speakWithFallbackTts(sample)
+}.start()
+}
+}
+
+private fun showAttitudePickerDialog() {
+val levels = arrayOf("Agak Cuek", "Ketus Standar", "Super Bar-Bar")
+val checked = attitudeLevel.coerceIn(0, 2)
+showCartoonOptionListDialog("Atur Level Ketus", levels, checked) { idx ->
+attitudeLevel = idx
+prefs.edit().putInt("attitude_level", idx).apply()
+Toast.makeText(activity, "Level ketus: ${levels[idx]}", Toast.LENGTH_SHORT).show()
+}
+}
+
+private fun showRoomThemePickerDialog() {
+val themeLabels = arrayOf("Siang Cerah", "Malam Lampu Tidur", "Ruang Belajar Hangat")
+val themes = arrayOf(RoomTheme.DAY, RoomTheme.NIGHT, RoomTheme.STUDY)
+val current = getSavedRoomTheme()
+val checked = themes.indexOf(current).coerceAtLeast(0)
+showCartoonOptionListDialog("Ganti Tema Ruangan", themeLabels, checked) { idx ->
+val chosenTheme = themes[idx]
+prefs.edit().putString("room_theme", chosenTheme.name).apply()
+Gdx.app?.postRunnable { onRoomThemeChanged?.invoke(chosenTheme) }
+Toast.makeText(activity, "Tema: ${themeLabels[idx]}", Toast.LENGTH_SHORT).show()
+}
+}
 }
