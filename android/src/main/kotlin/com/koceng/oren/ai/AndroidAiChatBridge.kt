@@ -55,6 +55,7 @@ class AndroidAiChatBridge(private val activity: Activity) : AiChatBridge {
         private const val GEMINI_HOST = "generativelanguage.googleapis.com"
         private const val GEMINI_CHAT_MODEL = "gemini-3.5-flash-lite"
         private const val GEMINI_TTS_MODEL = "gemini-3.8-flash-lite-tts"
+private val GEMINI_TTS_MODELS = listOf("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts")
         private const val GEMINI_VOICE_NAME = "Puck"
         private const val PCM_SAMPLE_RATE = 24000
         private const val UTTERANCE_ID = "koceng_oren_fallback_tts"
@@ -575,8 +576,10 @@ dialogRef = showCustomDialog(card)
      * dan memutarnya langsung dengan AudioTrack agar suara terdengar sangat alami.
      */
     private fun speakWithGeminiNaturalVoice(apiKey: String, spokenText: String): Boolean {
+var lastError = "unknown"
+for (model in GEMINI_TTS_MODELS) {
         try {
-            val url = URL("https", GEMINI_HOST, "/v1beta/models/$GEMINI_TTS_MODEL:generateContent?key=$apiKey")
+            val url = URL("https", GEMINI_HOST, "/v1beta/models/$model:generateContent?key=$apiKey")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
@@ -610,48 +613,75 @@ dialogRef = showCustomDialog(card)
             } ?: ""
             conn.disconnect()
 
-            if (responseCode !in 200..299 || body.isBlank()) {
-                return false
-            }
+        if (responseCode !in 200..299 || body.isBlank()) {
+    lastError = "HTTP $responseCode"
+    continue
+}
 
-            val json = JSONObject(body)
-            val parts = json.optJSONArray("candidates")
-                ?.optJSONObject(0)
-                ?.optJSONObject("content")
-                ?.optJSONArray("parts")
-                ?: return false
+val json = JSONObject(body)
+val parts = json.optJSONArray("candidates")
+    ?.optJSONObject(0)
+    ?.optJSONObject("content")
+    ?.optJSONArray("parts")
+if (parts == null) {
+    lastError = "empty_parts"
+    continue
+}
 
-            var base64Audio: String? = null
-            for (i in 0 until parts.length()) {
-                val inlineData = parts.optJSONObject(i)?.optJSONObject("inlineData")
-                val data = inlineData?.optString("data")
-                if (!data.isNullOrEmpty()) {
-                    base64Audio = data
-                    break
-                }
-            }
-            if (base64Audio.isNullOrEmpty()) return false
-
-            val pcmBytes = Base64.decode(base64Audio, Base64.DEFAULT)
-            if (pcmBytes.isEmpty()) return false
-
-            playPcmAudio(pcmBytes)
-            return true
-        } catch (e: Exception) {
-            return false
-        }
+var base64Audio: String? = null
+var mimeType = ""
+for (i in 0 until parts.length()) {
+    val inlineData = parts.optJSONObject(i)?.optJSONObject("inlineData")
+    val data = inlineData?.optString("data")
+    if (!data.isNullOrEmpty()) {
+        base64Audio = data
+        mimeType = inlineData.optString("mimeType", "").lowercase()
+        break
     }
+}
+if (base64Audio.isNullOrEmpty()) {
+    lastError = "empty_audio"
+    continue
+}
 
-    private fun playPcmAudio(pcmBytes: ByteArray) {
-        val sampleRate = 24000
+val audioBytes = Base64.decode(base64Audio, Base64.DEFAULT)
+if (audioBytes.isEmpty()) {
+    lastError = "empty_bytes"
+    continue
+}
+
+if (mimeType.contains("wav") || mimeType.contains("mp3") || mimeType.contains("mpeg") || mimeType.contains("ogg")) {
+    val audioFile = File(activity.cacheDir, "gemini_reply.audio")
+    FileOutputStream(audioFile).use { it.write(audioBytes) }
+    playAudioFile(audioFile)
+} else {
+    val sampleRate = Regex("rate=(\\d+)").find(mimeType)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: PCM_SAMPLE_RATE
+    playPcmAudio(audioBytes, sampleRate)
+}
+return true
+} catch (e: Exception) {
+    lastError = e.javaClass.simpleName
+}
+}
+activity.runOnUiThread {
+    Toast.makeText(activity, "Suara Gemini gagal ($lastError), pakai suara cadangan", Toast.LENGTH_SHORT).show()
+}
+return false
+}
+
+   private fun playPcmAudio(pcmBytes: ByteArray, sampleRate: Int = PCM_SAMPLE_RATE) {
         val byteRate = sampleRate * 2
         val dataSize = pcmBytes.size
         val chunkSize = 36 + dataSize
         val header = byteArrayOf('R'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(), 'F'.code.toByte(), (chunkSize and 0xff).toByte(), ((chunkSize shr 8) and 0xff).toByte(), ((chunkSize shr 16) and 0xff).toByte(), ((chunkSize shr 24) and 0xff).toByte(), 'W'.code.toByte(), 'A'.code.toByte(), 'V'.code.toByte(), 'E'.code.toByte(), 'f'.code.toByte(), 'm'.code.toByte(), 't'.code.toByte(), ' '.code.toByte(), 16, 0, 0, 0, 1, 0, 1, 0, (sampleRate and 0xff).toByte(), ((sampleRate shr 8) and 0xff).toByte(), ((sampleRate shr 16) and 0xff).toByte(), ((sampleRate shr 24) and 0xff).toByte(), (byteRate and 0xff).toByte(), ((byteRate shr 8) and 0xff).toByte(), ((byteRate shr 16) and 0xff).toByte(), ((byteRate shr 24) and 0xff).toByte(), 2, 0, 16, 0, 'd'.code.toByte(), 'a'.code.toByte(), 't'.code.toByte(), 'a'.code.toByte(), (dataSize and 0xff).toByte(), ((dataSize shr 8) and 0xff).toByte(), ((dataSize shr 16) and 0xff).toByte(), ((dataSize shr 24) and 0xff).toByte())
         val wavFile = File(activity.cacheDir, "gemini_reply.wav")
         FileOutputStream(wavFile).use { it.write(header); it.write(pcmBytes) }
+playAudioFile(wavFile)
+}
+
+private fun playAudioFile(audioFile: File) {
         val player = MediaPlayer(); activeMediaPlayer = player; isSpeaking.set(true); notifySpeaking(true); val latch = CountDownLatch(1)
-        try { player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()); player.setVolume(1.0f, 1.0f); player.setDataSource(wavFile.absolutePath); player.setOnCompletionListener { latch.countDown() }; player.setOnErrorListener { _, _, _ -> latch.countDown(); true }; player.prepare(); player.start(); latch.await() } catch (_: Exception) {} finally { try { if (player.isPlaying) player.stop() } catch (_: Exception) {}; try { player.release() } catch (_: Exception) {}; if (activeMediaPlayer === player) activeMediaPlayer = null; isSpeaking.set(false); notifySpeaking(false) }
+        try { player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()); player.setVolume(1.0f, 1.0f); player.setDataSourceaudioFile.absolutePath); player.setOnCompletionListener { latch.countDown() }; player.setOnErrorListener { _, _, _ -> latch.countDown(); true }; player.prepare(); player.start(); latch.await() } catch (_: Exception) {} finally { try { if (player.isPlaying) player.stop() } catch (_: Exception) {}; try { player.release() } catch (_: Exception) {}; if (activeMediaPlayer === player) activeMediaPlayer = null; isSpeaking.set(false); notifySpeaking(false) }
     }
 
     private fun speakWithFallbackTts(text: String) {
