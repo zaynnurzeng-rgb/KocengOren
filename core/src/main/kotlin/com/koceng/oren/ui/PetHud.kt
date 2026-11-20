@@ -36,10 +36,10 @@ class PetHud : Disposable {
     private val managedTextures = mutableListOf<Texture>()
 
     // Fonts
-    private val titleFont: BitmapFont = createFont(1.36f)
+    private val titleFont: BitmapFont = createFont(1.20f)
     private val labelFont: BitmapFont = createFont(1.16f)
     private val chatFont: BitmapFont = createFont(1.18f)
-    private val smallFont: BitmapFont = createFont(1.00f)
+    private val smallFont: BitmapFont = createFont(0.90f)
 
     // Callbacks ke PetScreen
     var onTalkClicked: (() -> Unit)? = null
@@ -82,11 +82,11 @@ class PetHud : Disposable {
 
     init {
         val comicOutline = Color(0.32f, 0.16f, 0.06f, 1f)
-        outerRingTex = createCartoonOuterRingTexture(Color.WHITE, comicOutline)
+        outerRingTex = createCartoonOuterRingTexture(Color(1f, 0.98f, 0.94f, 1f), comicOutline)
         activeRingTex = createCartoonOuterRingTexture(Color(1f, 0.90f, 0.28f, 1f), comicOutline)
 
         val titleStyle = Label.LabelStyle(titleFont, Color.WHITE)
-        val pillLabelStyle = Label.LabelStyle(labelFont, Color.WHITE)
+        val pillLabelStyle = Label.LabelStyle(labelFont, comicOutline)
         val statusSubStyle = Label.LabelStyle(smallFont, Color(1f, 0.97f, 0.82f, 1f))
         val userChatStyle = Label.LabelStyle(chatFont, Color(0.12f, 0.42f, 0.86f, 1f))
         val replyChatStyle = Label.LabelStyle(chatFont, Color(0.22f, 0.11f, 0.04f, 1f))
@@ -103,8 +103,8 @@ class PetHud : Disposable {
             IconType.BOOK
         )
         micIdleTex = createGlossyDiscTexture(
-            Color(0.24f, 0.82f, 1.00f, 1f),
-            Color(0.08f, 0.48f, 0.88f, 1f),
+            Color(1.00f, 0.60f, 0.10f, 1f),
+            Color(0.90f, 0.36f, 0.00f, 1f),
             IconType.MIC
         )
         micListenTex = createGlossyDiscTexture(
@@ -123,18 +123,18 @@ class PetHud : Disposable {
             IconType.STOP
         )
         val typeTex = createGlossyDiscTexture(
-            Color(0.80f, 0.44f, 1.00f, 1f),
-            Color(0.50f, 0.18f, 0.82f, 1f),
+            Color(0.86f, 0.42f, 0.82f, 1f),
+            Color(0.58f, 0.18f, 0.56f, 1f),
             IconType.CHAT
         )
         val resetTex = createGlossyDiscTexture(
-            Color(1.00f, 0.40f, 0.36f, 1f),
-            Color(0.76f, 0.16f, 0.18f, 1f),
+            Color(1.00f, 0.48f, 0.40f, 1f),
+            Color(0.84f, 0.24f, 0.18f, 1f),
             IconType.RESET
         )
-        val photoTex = createGlossyDiscTexture(Color(0.16f, 0.86f, 0.84f, 1f), Color(0.04f, 0.56f, 0.58f, 1f), IconType.CAMERA)
-                val historyTex = createGlossyDiscTexture(Color(0.20f, 0.78f, 0.88f, 1f), Color(0.06f, 0.48f, 0.64f, 1f), IconType.HISTORY)
-                        val settingsTex = createGlossyDiscTexture(Color(0.36f, 0.46f, 0.96f, 1f), Color(0.18f, 0.24f, 0.72f, 1f), IconType.SETTINGS)
+        val photoTex = createGlossyDiscTexture(Color(0.20f, 0.86f, 0.78f, 1f), Color(0.06f, 0.58f, 0.52f, 1f), IconType.CAMERA)
+                val historyTex = createGlossyDiscTexture(Color(1.00f, 0.90f, 0.68f, 1f), Color(0.94f, 0.66f, 0.24f, 1f), IconType.HISTORY)
+                        val settingsTex = createGlossyDiscTexture(Color(1.00f, 0.78f, 0.24f, 1f), Color(0.92f, 0.50f, 0.08f, 1f), IconType.SETTINGS)
         val rootTable = Table().apply {
             setFillParent(true)
             pad(14f, 16f, 18f, 16f)
@@ -157,7 +157,7 @@ class PetHud : Disposable {
         )
         val headerPill = Table().apply {
             background = headerBg
-            pad(8f, 20f, 12f, 20f)
+            pad(8f, 14f, 12f, 14f)
         }
         headerPill.add(Label("KOCENG OREN", titleStyle)).left().row()
         statusTextLabel = Label("Obrolan Santai", statusSubStyle)
@@ -167,10 +167,10 @@ class PetHud : Disposable {
             width = 120,
             height = 32,
             radius = 15,
-            topColor = Color(0.36f, 0.18f, 0.08f, 0.92f),
-            bottomColor = Color(0.24f, 0.11f, 0.04f, 0.96f),
-            outlineColor = Color(1f, 0.96f, 0.86f, 0.95f),
-            outlineWidth = 2
+            topColor = Color(1f, 0.98f, 0.94f, 1f),
+            bottomColor = Color(0.98f, 0.92f, 0.80f, 1f),
+            outlineColor = comicOutline,
+            outlineWidth = 3
         )
 
         val resetBtn = CartoonCircleButton(outerRingTex, resetTex).apply {
@@ -178,18 +178,18 @@ class PetHud : Disposable {
         }
         val resetLabelPill = Table().apply {
             background = labelPillBg
-            pad(2f, 10f, 4f, 10f)
-            add(Label("Reset", Label.LabelStyle(smallFont, Color.WHITE)))
+            pad(2f, 6f, 4f, 6f)
+            add(Label("Reset", Label.LabelStyle(smallFont, comicOutline)))
         }
         val resetCol = Table().apply {
             add(resetBtn).size(58f).row()
             add(resetLabelPill).padTop(3f)
         }
-        val historyBtn = CartoonCircleButton(outerRingTex, historyTex).apply { onClick = { onHistoryClicked?.invoke() } }; val historyLabelPill = Table().apply { background = labelPillBg; pad(2f, 8f, 4f, 8f); add(Label("Riwayat", Label.LabelStyle(smallFont, Color.WHITE))) }; val historyCol = Table().apply { add(historyBtn).size(48f).row(); add(historyLabelPill).padTop(3f) }; val settingsBtn = CartoonCircleButton(outerRingTex, settingsTex).apply { onClick = { onSettingsClicked?.invoke() } }; val settingsLabelPill = Table().apply { background = labelPillBg; pad(2f, 8f, 4f, 8f); add(Label("Atur", Label.LabelStyle(smallFont, Color.WHITE))) }; val settingsCol = Table().apply { add(settingsBtn).size(48f).row(); add(settingsLabelPill).padTop(3f) }; resetCol.clearChildren(); resetCol.add(resetBtn).size(48f).row(); resetCol.add(resetLabelPill).padTop(3f); val topRightRow = Table().apply { add(historyCol).padRight(6f); add(settingsCol).padRight(6f); add(resetCol) }
+        val historyBtn = CartoonCircleButton(outerRingTex, historyTex).apply { onClick = { onHistoryClicked?.invoke() } }; val historyLabelPill = Table().apply { background = labelPillBg; pad(2f, 6f, 4f, 6f); add(Label("Riwayat", Label.LabelStyle(smallFont, comicOutline))) }; val historyCol = Table().apply { add(historyBtn).size(44f).row(); add(historyLabelPill).padTop(3f) }; val settingsBtn = CartoonCircleButton(outerRingTex, settingsTex).apply { onClick = { onSettingsClicked?.invoke() } }; val settingsLabelPill = Table().apply { background = labelPillBg; pad(2f, 6f, 4f, 6f); add(Label("Atur", Label.LabelStyle(smallFont, comicOutline))) }; val settingsCol = Table().apply { add(settingsBtn).size(44f).row(); add(settingsLabelPill).padTop(3f) }; resetCol.clearChildren(); resetCol.add(resetBtn).size(44f).row(); resetCol.add(resetLabelPill).padTop(3f); val topRightRow = Table().apply { add(historyCol).padRight(6f); add(settingsCol).padRight(6f); add(resetCol) }
         topBar.add(headerPill).left().top()
         topBar.add().expandX()
         topBar.add(resetCol).right().top()
-        topBar.clearChildren(); topBar.add(headerPill).width(235f).left().top(); topBar.add().expandX(); topBar.add(topRightRow).right().top()
+        topBar.clearChildren(); topBar.add(headerPill).width(205f).left().top(); topBar.add().expandX(); topBar.add(topRightRow).right().top()
         
         rootTable.add(topBar).expandX().fillX().top().row()
 
@@ -240,7 +240,7 @@ class PetHud : Disposable {
             pad(24f, 16f, 14f, 16f)
             add(chatScrollPane).width(406f).maxHeight(124f).minHeight(60f)
         }
-        val copyPill = Table().apply { background = labelPillBg; pad(3f, 12f, 5f, 12f); add(Label("Salin", Label.LabelStyle(smallFont, Color.WHITE))); touchable = com.badlogic.gdx.scenes.scene2d.Touchable.enabled; addListener(object : com.badlogic.gdx.scenes.scene2d.utils.ClickListener() { override fun clicked(event: com.badlogic.gdx.scenes.scene2d.InputEvent?, x: Float, y: Float) { onCopyClicked?.invoke() } }) }; speechBubbleContainer.row(); speechBubbleContainer.add(copyPill).right().padTop(4f)
+        val copyPill = Table().apply { background = createCartoonPillDrawable(width = 120, height = 32, radius = 15, topColor = Color(1f, 0.62f, 0.14f, 1f), bottomColor = Color(0.92f, 0.42f, 0.06f, 1f), outlineColor = comicOutline, outlineWidth = 3); pad(3f, 12f, 5f, 12f); add(Label("Salin", Label.LabelStyle(smallFont, Color.WHITE))); touchable = com.badlogic.gdx.scenes.scene2d.Touchable.enabled; addListener(object : com.badlogic.gdx.scenes.scene2d.utils.ClickListener() { override fun clicked(event: com.badlogic.gdx.scenes.scene2d.InputEvent?, x: Float, y: Float) { onCopyClicked?.invoke() } }) }; speechBubbleContainer.row(); speechBubbleContainer.add(copyPill).right().padTop(4f)
         rootTable.add(speechBubbleContainer).center().padBottom(12f).row()
 
         // ==========================================
