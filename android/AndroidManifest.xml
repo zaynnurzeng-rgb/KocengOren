@@ -24,7 +24,7 @@
         android:icon="@mipmap/ic_launcher"
         android:isGame="true"
         android:label="Koceng Oren"
-        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
 
         <activity
             android:name="com.koceng.oren.AndroidLauncher"
