@@ -681,7 +681,7 @@ playAudioFile(wavFile)
 
 private fun playAudioFile(audioFile: File) {
         val player = MediaPlayer(); activeMediaPlayer = player; isSpeaking.set(true); notifySpeaking(true); val latch = CountDownLatch(1)
-        try { player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()); player.setVolume(1.0f, 1.0f); player.setDataSourceaudioFile.absolutePath); player.setOnCompletionListener { latch.countDown() }; player.setOnErrorListener { _, _, _ -> latch.countDown(); true }; player.prepare(); player.start(); latch.await() } catch (_: Exception) {} finally { try { if (player.isPlaying) player.stop() } catch (_: Exception) {}; try { player.release() } catch (_: Exception) {}; if (activeMediaPlayer === player) activeMediaPlayer = null; isSpeaking.set(false); notifySpeaking(false) }
+        try { player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()); player.setVolume(1.0f, 1.0f); player.setDataSource(audioFile.absolutePath); player.setOnCompletionListener { latch.countDown() }; player.setOnErrorListener { _, _, _ -> latch.countDown(); true }; player.prepare(); player.start(); latch.await() } catch (_: Exception) {} finally { try { if (player.isPlaying) player.stop() } catch (_: Exception) {}; try { player.release() } catch (_: Exception) {}; if (activeMediaPlayer === player) activeMediaPlayer = null; isSpeaking.set(false); notifySpeaking(false) }
     }
 
     private fun speakWithFallbackTts(text: String) {
