@@ -72,6 +72,10 @@ private const val PREFS_NAME = "koceng_oren_prefs"
     override var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
     override var onError: ((String) -> Unit)? = null
     override var onRoomThemeChanged: ((RoomTheme) -> Unit)? = null
+    override val useNativeHud: Boolean = true
+    private var nativeHud: NativePetHudOverlay? = null
+    fun createNativeHudOverlay(): View = NativePetHudOverlay(activity, this).also { nativeHud = it }.createView()
+    override fun updateNativeBubble(userText: String?, replyText: String) { nativeHud?.updateBubble(userText, replyText) }
     private val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     @Volatile private var selectedVoiceName: String = prefs.getString("voice_name", GEMINI_VOICE_NAME) ?: GEMINI_VOICE_NAME
     @Volatile private var attitudeLevel: Int = prefs.getInt("attitude_level", 1)
@@ -754,27 +758,33 @@ private fun playAudioFile(audioFile: File) {
 
     private fun notifyListening(listening: Boolean) {
         Gdx.app?.postRunnable { onListeningStateChanged?.invoke(listening) }
+        nativeHud?.setListening(listening)
     }
 
     private fun notifyThinking(thinking: Boolean) {
         Gdx.app?.postRunnable { onThinkingStateChanged?.invoke(thinking) }
+        nativeHud?.setThinking(thinking)
     }
 
     private fun notifyUserMessage(msg: String) {
         Gdx.app?.postRunnable { onUserMessage?.invoke(msg) }
+        nativeHud?.updateUserMessage(msg)
     }
 
     private fun notifyReply(reply: String) {
         lastReplyText = reply
         Gdx.app?.postRunnable { onReplyText?.invoke(reply) }
+        nativeHud?.updateBubble(null, reply)
     }
 
     private fun notifySpeaking(speaking: Boolean) {
         Gdx.app?.postRunnable { onSpeakingStateChanged?.invoke(speaking) }
+        nativeHud?.setSpeaking(speaking)
     }
 
     private fun notifyError(error: String) {
         Gdx.app?.postRunnable { onError?.invoke(error) }
+        nativeHud?.updateBubble(null, error)
     }
 
     override fun getSavedRoomTheme(): RoomTheme {
