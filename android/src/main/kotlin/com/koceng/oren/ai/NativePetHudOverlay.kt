@@ -69,17 +69,22 @@ class NativePetHudOverlay(
         }
 
         topSection.addView(buildTopBar())
-        topSection.addView(buildComicBubble())
         root.addView(topSection)
 
-        val bottomBar = buildBottomBar().apply {
+        val bottomContainer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             )
         }
-        root.addView(bottomBar)
+        val bubbleCard = buildComicBubble().apply {
+            (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(10)
+        }
+        bottomContainer.addView(bubbleCard)
+        bottomContainer.addView(buildBottomBar())
+        root.addView(bottomContainer)
 
         rootView = root
         refreshHomeworkButton()
@@ -215,7 +220,7 @@ class NativePetHudOverlay(
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(130)
+                dp(92)
             )
         }
 
