@@ -921,7 +921,7 @@ private fun playAudioFile(audioFile: File) {
                     readTimeout = 30000
                     doOutput = true
                 }
-   conn.o        conn.outputStream.use { os ->
+           conn.outputStream.use { os ->
                     os.write(payload.toString().toByteArray(Charsets.UTF_8))
                 }
                 code = conn.responseCode
