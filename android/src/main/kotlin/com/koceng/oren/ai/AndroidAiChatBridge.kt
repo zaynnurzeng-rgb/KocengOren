@@ -496,15 +496,6 @@ dialogRef = showCustomDialog(card)
     }
 
     private fun callGeminiChatApi(apiKey: String, userText: String, mode: ChatMode): String {
-        val url = URL("https", GEMINI_HOST, "/v1beta/models/$GEMINI_CHAT_MODEL:generateContent?key=$apiKey")
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            connectTimeout = 15000
-            readTimeout = 45000
-            doOutput = true
-        }
-
         val contentsArray = JSONArray()
         synchronized(chatHistory) {
             for ((role, text) in chatHistory) {
@@ -530,21 +521,46 @@ dialogRef = showCustomDialog(card)
                 put("maxOutputTokens", if (mode == ChatMode.HOMEWORK) 1024 else 320)
             })
         }
+        val modelsToTry = listOf(GEMINI_CHAT_MODEL, GEMINI_CHAT_MODEL, "gemini-3.8-flash")
+      var responseCode = 0
+      var body = ""
+      for ((index, model) in modelsToTry.withIndex()) {
+               val url = URL("https", GEMINI_HOST, "/v1beta/models/$model:generateContent?key=$apiKey")
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            connectTimeout = 15000
+            readTimeout = 45000
+            doOutput = true
+        }
 
+   
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(payload.toString()) }
 
-        val responseCode = conn.responseCode
+       responseCode = conn.responseCode
         val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-        val body = stream?.let { s ->
+       body = stream?.let { s ->
             BufferedReader(InputStreamReader(s, Charsets.UTF_8)).use { it.readText() }
         } ?: ""
         conn.disconnect()
 
+                  if (responseCode in 200..299) {
+                     break
+                  }
+          if (responseCode in setOf(500, 502, 503, 504) && index < modelsToTry.lastIndex) {
+             Thread.sleep(1200)
+             continue
+          }
+          break
+      }
         if (responseCode == 400 || responseCode == 403) {
             throw Exception("API Key Gemini ditolak (HTTP $responseCode). Cek GitHub Secrets lu!")
         }
         if (responseCode == 429) {
             throw Exception("Kuota Gemini lagi kena limit (HTTP 429). Tunggu sebentar baru tanya lagi!")
+        }
+        if (responseCode == 503) {
+           throw Exception("Server Gemini lagi rame banget nih (HTTP 503), coba tanya sekali lagi bentar lagi!")
         }
         if (responseCode !in 200..299) {
             throw Exception("Server Gemini lagi bermasalah (HTTP $responseCode). Coba lagi bentar!")
@@ -873,14 +889,6 @@ private fun playAudioFile(audioFile: File) {
         Thread {
             try {
                 val host = "generativelanguage." + "googleapis.com"
-                val url = URL("https://$host/v1beta/models/$GEMINI_CHAT_MODEL:generateContent?key=$apiKey")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    doOutput = true
-                }
                 val prompt = "Baca soal PR pada gambar ini dengan teliti, lalu kerjakan dan jelaskan jawabannya langkah demi langkah dengan jelas."
                 val payload = JSONObject().apply {
                     put("systemInstruction", JSONObject().apply {
@@ -901,14 +909,31 @@ private fun playAudioFile(audioFile: File) {
                         put("maxOutputTokens", 1024)
                     })
                 }
-                conn.outputStream.use { os ->
+              val modelsToTry = listOf(GEMINI_CHAT_MODEL, GEMINI_CHAT_MODEL, "gemini-3.8-flash")
+                var code = 0
+                var body = ""
+                for ((index, model) in modelsToTry.withIndex()) {
+                                 val url = URL("https://$host/v1beta/models/$model:generateContent?key=$apiKey")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    connectTimeout = 15000
+                    readTimeout = 30000
+                    doOutput = true
+                }
+   conn.o        conn.outputStream.use { os ->
                     os.write(payload.toString().toByteArray(Charsets.UTF_8))
                 }
-                val code = conn.responseCode
-                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                code = conn.responseCode
+                body = (if (code in 200..299) conn.inputStream else conn.errorStream)
                     ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                if (code !in 200..299) {
-                    notifyError("Gagal memproses foto PR (HTTP $code)")
+                conn.disconnect()
+                if (code in 200..299) { break }
+                    if (code in setOf(500, 502, 503, 504) && index < modelsToTry.lastIndex) { Thread.sleep(1200); continue } 
+                    break
+                }
+                    if (code !in 200..299) {
+                   if (code == 503) notifyError("Server Gemini lagi rame banget nih (HTTP 503), coba tanya sekali lagi bentar lagi!") else notifyError("Gagal memproses foto PR (HTTP $code)")
                     return@Thread
                 }
                 val json = JSONObject(body)
