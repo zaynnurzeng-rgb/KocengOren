@@ -13,6 +13,9 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.ImageView
+import android.widget.ProgressBar
+import com.koceng.oren.R
 
 class NativePetHudOverlay(
     private val activity: Activity,
@@ -32,6 +35,7 @@ class NativePetHudOverlay(
     }
 
     private var rootView: FrameLayout? = null
+    private var splashOverlay: LinearLayout? = null
     private var statusTextView: TextView? = null
     private var userMessageView: TextView? = null
     private var replyMessageView: TextView? = null
@@ -90,7 +94,76 @@ class NativePetHudOverlay(
         refreshHomeworkButton()
         refreshVoiceButton()
         refreshStatusLabel()
+        
+        splashOverlay = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            elevation = dp(16).toFloat()
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#FFF8EC"), Color.parseColor("#FFDCA8"))
+            )
+
+            addView(ImageView(activity).apply {
+                setImageResource(R.mipmap.ic_launcher)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(156), dp(156))
+            })
+
+            addView(TextView(activity).apply {
+                text = "KOCENG OREN AI"
+                textSize = 25f
+                setTextColor(Color.parseColor("#52290F"))
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(20) }
+            })
+
+            addView(TextView(activity).apply {
+                text = "Bentar, lagi bangun tidur..."
+                textSize = 14f
+                setTextColor(Color.parseColor("#8C5228"))
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+            })
+
+            addView(ProgressBar(activity).apply {
+                isIndeterminate = true
+                layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+                    topMargin = dp(22)
+                }
+            })
+        }
+        root.addView(
+            splashOverlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
         return root
+    }
+
+    fun hideSplashScreen() {
+        activity.runOnUiThread {
+            val overlay = splashOverlay ?: return@runOnUiThread
+            if (overlay.visibility == View.GONE) return@runOnUiThread
+            overlay.animate()
+                .alpha(0f)
+                .setDuration(350L)
+                .withEndAction {
+                    overlay.visibility = View.GONE
+                }
+                .start()
+        }
     }
 
     private fun buildTopBar(): LinearLayout {
