@@ -76,6 +76,7 @@ private const val PREFS_NAME = "koceng_oren_prefs"
     private var nativeHud: NativePetHudOverlay? = null
     fun createNativeHudOverlay(): View = NativePetHudOverlay(activity, this).also { nativeHud = it }.createView()
     override fun updateNativeBubble(userText: String?, replyText: String) { nativeHud?.updateBubble(userText, replyText) }
+    override fun onSceneReady() { nativeHud?.hideSplashScreen() }
     private val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     @Volatile private var selectedVoiceName: String = prefs.getString("voice_name", GEMINI_VOICE_NAME) ?: GEMINI_VOICE_NAME
     @Volatile private var attitudeLevel: Int = prefs.getInt("attitude_level", 1)
