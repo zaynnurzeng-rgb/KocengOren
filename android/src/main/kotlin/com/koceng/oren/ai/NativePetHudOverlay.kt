@@ -127,10 +127,12 @@ private var currentSplashProgress: Float = 0f
             }
             
             if (customBitmap != null) {
+                background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Color.parseColor("#0D7FF2"), Color.parseColor("#38BDF8"), Color.parseColor("#5EC22E")))
                 addView(
                     ImageView(activity).apply {
                         setImageBitmap(customBitmap)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        adjustViewBounds = true
                     },
                     FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
