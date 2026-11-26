@@ -1,6 +1,11 @@
 package com.koceng.oren.ai
 
 import android.app.Activity
+import android.animation.ValueAnimator
+import android.graphics.BitmapFactory
+import android.os.Build
+import android.view.animation.DecelerateInterpolator
+import android.view.WindowInsets
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -35,7 +40,12 @@ class NativePetHudOverlay(
     }
 
     private var rootView: FrameLayout? = null
-    private var splashOverlay: LinearLayout? = null
+    private var splashOverlay: View? = null
+private var splashProgressFill: View? = null
+private var splashProgressTrack: FrameLayout? = null
+private var splashLoadingText: TextView? = null
+private var splashAnimator: ValueAnimator? = null
+private var currentSplashProgress: Float = 0f
     private var statusTextView: TextView? = null
     private var userMessageView: TextView? = null
     private var replyMessageView: TextView? = null
@@ -60,7 +70,6 @@ class NativePetHudOverlay(
             )
             isClickable = false
             isFocusable = false
-            setPadding(dp(12), dp(10), dp(12), dp(14))
         }
 
         val topSection = LinearLayout(activity).apply {
@@ -71,8 +80,8 @@ class NativePetHudOverlay(
                 Gravity.TOP
             )
         }
-
-        topSection.addView(buildTopBar())
+        val topBar = buildTopBar().apply { setPadding(dp(12), dp(36), dp(12), dp(4)) }
+        topSection.addView(topBar)
         root.addView(topSection)
 
         val bottomContainer = LinearLayout(activity).apply {
@@ -82,6 +91,7 @@ class NativePetHudOverlay(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             )
+            setPadding(dp(12), dp(4), dp(12), dp(16))
         }
         val bubbleCard = buildComicBubble().apply {
             (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(10)
@@ -89,59 +99,160 @@ class NativePetHudOverlay(
         bottomContainer.addView(bubbleCard)
         bottomContainer.addView(buildBottomBar())
         root.addView(bottomContainer)
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            val cutoutTop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) insets.displayCutout?.safeInsetTop ?: 0 else 0
+            val safeTop = maxOf(cutoutTop + dp(8), dp(36))
+            topBar.setPadding(dp(12), safeTop, dp(12), dp(4))
+            val cutoutBottom = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) insets.displayCutout?.safeInsetBottom ?: 0 else 0
+            bottomContainer.setPadding(dp(12), dp(4), dp(12), maxOf(cutoutBottom + dp(10), dp(16)))
+            insets
+        }
 
         rootView = root
         refreshHomeworkButton()
         refreshVoiceButton()
         refreshStatusLabel()
         
-        splashOverlay = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+        val splashContainer = FrameLayout(activity).apply {
             isClickable = true
             isFocusable = true
             elevation = dp(16).toFloat()
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#FFF8EC"), Color.parseColor("#FFDCA8"))
-            )
 
-            addView(ImageView(activity).apply {
-                setImageResource(R.mipmap.ic_launcher)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                layoutParams = LinearLayout.LayoutParams(dp(156), dp(156))
-            })
+            val customBitmap = try {
+                activity.assets.open("splash_art.png").use { BitmapFactory.decodeStream(it) }
+            } catch (_: Exception) {
+                null
+            }
 
-            addView(TextView(activity).apply {
-                text = "KOCENG OREN AI"
-                textSize = 25f
-                setTextColor(Color.parseColor("#52290F"))
+            if (customBitmap != null) {
+                addView(
+                    ImageView(activity).apply {
+                        setImageBitmap(customBitmap)
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                    },
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+            } else {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(Color.parseColor("#FFF8EC"), Color.parseColor("#FFDCA8"))
+                )
+                addView(
+                    LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        addView(ImageView(activity).apply {
+                            setImageResource(R.mipmap.ic_launcher)
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            layoutParams = LinearLayout.LayoutParams(dp(156), dp(156))
+                        })
+                        addView(TextView(activity).apply {
+                            text = "KOCENG OREN AI"
+                            textSize = 25f
+                            setTextColor(Color.parseColor("#52290F"))
+                            setTypeface(null, Typeface.BOLD)
+                            gravity = Gravity.CENTER
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply { topMargin = dp(20) }
+                        })
+                    },
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+
+            val loadingBox = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(32), 0, dp(32), 0)
+            }
+
+            val fillView = View(activity).apply {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(Color.parseColor("#FFE44D"), Color.parseColor("#FF9F1C"))
+                ).apply {
+                    cornerRadius = dp(11).toFloat()
+                }
+            }
+            splashProgressFill = fillView
+
+            val trackView = FrameLayout(activity).apply {
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#4A230B"))
+                    setStroke(dp(3), Color.WHITE)
+                    cornerRadius = dp(14).toFloat()
+                }
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+                addView(
+                    fillView,
+                    FrameLayout.LayoutParams(0, FrameLayout.LayoutParams.MATCH_PARENT)
+                )
+            }
+            splashProgressTrack = trackView
+
+            val loadingText = TextView(activity).apply {
+                text = "— Loading... 0% —"
+                textSize = 14f
+                setTextColor(Color.WHITE)
                 setTypeface(null, Typeface.BOLD)
                 gravity = Gravity.CENTER
+                setShadowLayer(4f, 0f, 2f, Color.parseColor("#52290F"))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(20) }
-            })
+                ).apply { topMargin = dp(8) }
+            }
+            splashLoadingText = loadingText
 
-            addView(TextView(activity).apply {
-                text = "Bentar, lagi bangun tidur..."
-                textSize = 14f
-                setTextColor(Color.parseColor("#8C5228"))
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(6) }
-            })
+            loadingBox.addView(
+                trackView,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24))
+            )
+            loadingBox.addView(loadingText)
 
-            addView(ProgressBar(activity).apply {
-                isIndeterminate = true
-                layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply {
-                    topMargin = dp(22)
+            addView(
+                loadingBox,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM
+                ).apply {
+                    bottomMargin = dp(34)
                 }
-            })
+            )
         }
+        splashOverlay = splashContainer
+
+        currentSplashProgress = 0f
+        splashAnimator = ValueAnimator.ofFloat(0f, 0.88f).apply {
+            duration = 2600L
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { anim ->
+                val frac = anim.animatedValue as Float
+                currentSplashProgress = frac
+                val track = splashProgressTrack
+                val fill = splashProgressFill
+                if (track != null && fill != null) {
+                    val trackWidth = (track.width - track.paddingLeft - track.paddingRight).coerceAtLeast(0)
+                    if (trackWidth > 0) {
+                        val lp = fill.layoutParams
+                        lp.width = (trackWidth * frac).toInt()
+                        fill.layoutParams = lp
+                    }
+                }
+                splashLoadingText?.text = "— Loading... ${(frac * 100).toInt()}% —"
+            }
+            start()
+        }      
+      
         root.addView(
             splashOverlay,
             FrameLayout.LayoutParams(
@@ -156,16 +267,43 @@ class NativePetHudOverlay(
         activity.runOnUiThread {
             val overlay = splashOverlay ?: return@runOnUiThread
             if (overlay.visibility == View.GONE) return@runOnUiThread
-            overlay.animate()
-                .alpha(0f)
-                .setDuration(350L)
-                .withEndAction {
-                    overlay.visibility = View.GONE
+            splashAnimator?.cancel()
+            splashAnimator = null
+            ValueAnimator.ofFloat(currentSplashProgress, 1f).apply {
+                duration = 320L
+                interpolator = DecelerateInterpolator()
+                addUpdateListener { anim ->
+                    val frac = anim.animatedValue as Float
+                    currentSplashProgress = frac
+                    val track = splashProgressTrack
+                    val fill = splashProgressFill
+                    if (track != null && fill != null) {
+                        val trackWidth = (track.width - track.paddingLeft - track.paddingRight).coerceAtLeast(0)
+                        if (trackWidth > 0) {
+                            val lp = fill.layoutParams
+                            lp.width = (trackWidth * frac).toInt()
+                            fill.layoutParams = lp
+                        }
+                    }
+                    splashLoadingText?.text = "— Loading... ${(frac * 100).toInt()}% —"
                 }
-                .start()
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        overlay.animate()
+                            .alpha(0f)
+                            .setStartDelay(120L)
+                            .setDuration(350L)
+                            .withEndAction {
+                                overlay.visibility = View.GONE
+                            }
+                            .start()
+                    }
+                })
+                start()
+            }
         }
     }
-
+  
     private fun buildTopBar(): LinearLayout {
         val bar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
