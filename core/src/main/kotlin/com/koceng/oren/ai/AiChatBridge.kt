@@ -35,4 +35,5 @@ interface AiChatBridge {
     fun getSavedRoomTheme(): RoomTheme
     val useNativeHud: Boolean
     fun updateNativeBubble(userText: String?, replyText: String)
+    fun onSceneReady()
 }    
