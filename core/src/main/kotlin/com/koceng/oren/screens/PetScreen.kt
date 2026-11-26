@@ -41,11 +41,12 @@ class PetScreen(
     // -- 2D Cartoon Room Backdrop --
     private lateinit var backdropBatch: SpriteBatch
     private lateinit var roomBackdropTexture: Texture
-
+    private lateinit var footShadowTexture: Texture
+    private var hasNotifiedReady: Boolean = false
     // Efek Kamera (Jarak ideal agar seluruh tubuh kucing terlihat utuh)
-    private val defaultCameraPos = Vector3(0f, 1.40f, 5.20f)
-    private val zoomCameraPos = Vector3(0f, 1.35f, 4.65f)
-    private val cameraLookAtY = 0.88f
+    private val defaultCameraPos = Vector3(0f, 1.65f, 5.40f)
+    private val zoomCameraPos = Vector3(0f, 1.58f, 4.85f)
+    private val cameraLookAtY = 1.18f
     private val targetCameraPos = Vector3(defaultCameraPos)
     private val tempVec3 = Vector3()
 
@@ -101,7 +102,8 @@ class PetScreen(
         } else {
             createCartoonRoomTexture()
         }
-
+        footShadowTexture = createFootShadowTexture()
+        
         // ==========================================
         // 4. Inisialisasi SFX & Partikel Prosedural
         // ==========================================
@@ -312,6 +314,12 @@ class PetScreen(
         backdropBatch.color = currentBackdropTint
         backdropBatch.begin()
         backdropBatch.draw(roomBackdropTexture, 0f, 0f, w, h)
+        tempVec3.set(0f, 0.02f, 0f)
+        val footPos = camera.project(tempVec3)
+        val shadowW = w * 0.44f
+        val shadowH = w * 0.11f
+        backdropBatch.setColor(1f, 1f, 1f, 0.85f)
+        backdropBatch.draw(footShadowTexture, footPos.x - shadowW * 0.5f, footPos.y - shadowH * 0.42f, shadowW, shadowH)
         backdropBatch.end()
 
         // Reset depth buffer agar model 3D kucing selalu tampil di atas backdrop
@@ -326,6 +334,10 @@ class PetScreen(
 
         // 7. RENDER LAYER 3: 2D Scene2D UI (HUD AI Pet)
         if (!aiChatBridge.useNativeHud) petHud.render(delta)
+        if (!hasNotifiedReady) {
+            hasNotifiedReady = true
+            aiChatBridge.onSceneReady()
+        }
     }
 
     override fun resize(width: Int, height: Int) {
@@ -467,7 +479,7 @@ class PetScreen(
         fillRoundRect(sofaX + 102, sofaY + 24, 52, 44, 12, Color(0.30f, 0.72f, 0.92f, 1f))
 
         // 10. Karpet merah
-        val rugTopY = wallBottomY + 26
+        val rugTopY = wallBottomY + 10
         val rugBotY = (h * 0.89f).toInt()
         for (ry in rugTopY..rugBotY) {
             val t = (ry - rugTopY).toFloat() / (rugBotY - rugTopY).coerceAtLeast(1)
@@ -482,24 +494,38 @@ class PetScreen(
             pm.fillRectangle(rx, ry, halfW * 2, 2)
         }
 
-        // 11. Bayangan lembut di bawah kaki kucing
-        val shadowCx = w / 2
-        val shadowCy = (h * 0.74f).toInt()
-        for (sy in -26..26) {
-            val ny = sy / 26f
-            val halfW = (92f * kotlin.math.sqrt((1f - ny * ny).coerceAtLeast(0f))).toInt()
-            val alpha = 0.26f * (1f - ny * ny)
-            pm.setColor(0.25f, 0.05f, 0.05f, alpha)
-            pm.fillRectangle(shadowCx - halfW, shadowCy + sy, halfW * 2, 1)
-        }
-
+    
         val tex = Texture(pm).apply {
             setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
         }
         pm.dispose()
         return tex
     }
-
+        private fun createFootShadowTexture(): Texture {
+            val w = 128
+val h = 64
+val pm = Pixmap(w, h, Pixmap.Format.RGBA8888)
+pm.blending = Pixmap.Blending.None
+val cx = w * 0.5f
+val cy = h * 0.5f
+for (y in 0 until h) {
+val ny = (y + 0.5f - cy) / (h * 0.5f)
+for (x in 0 until w) {
+val nx = (x + 0.5f - cx) / (w * 0.5f)
+val d2 = nx * nx + ny * ny
+if (d2 < 1f) {
+val falloff = (1f - d2) * (1f - d2)
+pm.drawPixel(x, y, Color.rgba8888(0.18f, 0.04f, 0.04f, 0.48f * falloff))
+}
+}
+}
+val tex = Texture(pm).apply {
+setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear)
+}
+pm.dispose()
+return tex
+        }
+        
     override fun pause() {
         voiceBridge.stopListening()
         aiChatBridge.stopAll()
@@ -519,6 +545,7 @@ class PetScreen(
         pet.dispose()
         backdropBatch.dispose()
         roomBackdropTexture.dispose()
+        footShadowTexture.dispose()
         sceneManager.dispose()
         petHud.dispose()
     }
