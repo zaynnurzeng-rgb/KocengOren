@@ -118,12 +118,14 @@ private var currentSplashProgress: Float = 0f
             isFocusable = true
             elevation = dp(16).toFloat()
 
-            val customBitmap = try {
-                activity.assets.open("splash_art.png").use { BitmapFactory.decodeStream(it) }
-            } catch (_: Exception) {
-                null
+            val customBitmap = listOf("splash_art.png", "models/splash_art.png").firstNotNullOfOrNull { path ->
+                try {
+                    activity.assets.open(path).use { BitmapFactory.decodeStream(it) }
+                } catch (_: Exception) {
+                    null
+                }
             }
-
+            
             if (customBitmap != null) {
                 addView(
                     ImageView(activity).apply {
