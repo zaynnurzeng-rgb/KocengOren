@@ -6,7 +6,8 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.koceng.oren"
+        applicationId "com.kocengoren.gemini"
+        setProperty("archivesBaseName", "com.kocengoren.gemini")
         minSdk 21
         targetSdk 34
         versionCode 1
